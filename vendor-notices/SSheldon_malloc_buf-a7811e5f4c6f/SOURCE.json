@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/SSheldon/malloc_buf",
+  "revision": "a7811e5f4c6f9685dd57ad9bfe34e9bf6b0ba4f9",
+  "packages": [
+    "malloc_buf-0.0.6"
+  ],
+  "files": [
+    {
+      "path": "Cargo.toml",
+      "url": "https://raw.githubusercontent.com/SSheldon/malloc_buf/a7811e5f4c6f9685dd57ad9bfe34e9bf6b0ba4f9/Cargo.toml",
+      "sha256": "1c70c91688d9850272e43cee9b189ffe3fe667151d7caf576a36a720f8b28194"
+    }
+  ],
+  "provenance_gap": "The published release tree contains a licence declaration but no full upstream licence notice. This supplement preserves the original declaration; it is not a reconstructed licence notice."
+}

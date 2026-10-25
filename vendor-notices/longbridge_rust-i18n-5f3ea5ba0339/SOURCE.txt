@@ -1,0 +1,2 @@
+https://github.com/longbridge/rust-i18n/tree/5f3ea5ba03395f2f2908e3587e01788cfdfd3555
+Exact revision recorded by published crate metadata. Files were downloaded unchanged.

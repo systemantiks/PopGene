@@ -1,0 +1,58 @@
+# Rust build outputs and local toolchains (keep Cargo.lock)
+target/
+dist/
+.tools/
+**/*.rs.bk
+*.profraw
+*.profdata
+
+# Python environments, bytecode, and tooling caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local environment settings (keep shareable templates)
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+.envrc
+.direnv/
+
+# OS metadata, editor state, and temporary files
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+.idea/
+*.swp
+*.swo
+*~
+*.log
+
+# Local PopGene documents and their SQLite sidecars
+*.popgene
+*.popgene-journal
+*.popgene-wal
+*.popgene-shm
+
+# Local validation output and comparison material (never publish)
+/audit/
+/validation/results/
+/validation/fixtures/large-*.fasta
+/validation/projects/
+/validation/parity-exports/
+/validation/display-parity-inputs/
+
+# Local sequence exports and comparison captures
+/validation/**/*snapgene*
+/validation/**/*parity*

@@ -1,0 +1,16 @@
+[package]
+name = "popgene-formats"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+popgene-core = { path = "../popgene-core" }
+serde_json.workspace = true
+thiserror.workspace = true
+gb-io = "0.9"
+rusqlite = { version = "0.37", features = ["bundled"] }
+tempfile = "3"
+sha2 = "0.10"
+quick-xml = "0.41"
+

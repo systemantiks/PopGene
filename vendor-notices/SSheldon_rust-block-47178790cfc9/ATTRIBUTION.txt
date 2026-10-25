@@ -1,0 +1,5 @@
+block-0.1.6
+Upstream declared licence: MIT
+Authors from the published manifest: Steven Sheldon
+
+The published release tree contains a licence declaration but no full upstream licence notice. This supplement preserves the original declaration; it is not a reconstructed licence notice.

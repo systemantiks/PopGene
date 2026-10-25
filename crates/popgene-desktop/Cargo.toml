@@ -1,0 +1,22 @@
+[package]
+name = "popgene-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "popgene"
+path = "src/main.rs"
+
+[dependencies]
+popgene-core = { path = "../popgene-core" }
+popgene-formats = { path = "../popgene-formats" }
+gpui-kit = "=0.8.0"
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "async-std"] }
+
+[build-dependencies]
+cc = "1"
+
+[dev-dependencies]
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde_json.workspace = true

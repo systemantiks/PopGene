@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/longbridge/gpui-kit",
+  "revision": "1676826d9d49b90f4d7b6808b69924f58796f6f1",
+  "packages": [
+    "gpui-kit-0.8.0",
+    "gpui-kit-assets-0.8.0"
+  ],
+  "files": [
+    {
+      "path": "LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/longbridge/gpui-kit/1676826d9d49b90f4d7b6808b69924f58796f6f1/LICENSE-APACHE",
+      "sha256": "d1b0449e5478c574ba4f686c2656df7fe77d66821a61f8b6ed3378a58ed9a811"
+    }
+  ]
+}

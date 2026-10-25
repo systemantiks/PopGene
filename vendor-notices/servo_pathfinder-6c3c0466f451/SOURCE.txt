@@ -1,0 +1,2 @@
+https://github.com/servo/pathfinder/tree/6c3c0466f451c5bd2007087728cd168798cd64e8
+The published geometry revision a5e98fac00f433fe2ff4b2135383d82491b8bfc5 is unavailable from the official repository. Shared project notices are taken from available official revision 6c3c0466f451c5bd2007087728cd168798cd64e8 (also used by the resolved pathfinder_simd crate). Published geometry source headers declare the same MIT/Apache terms and copyright holders.
