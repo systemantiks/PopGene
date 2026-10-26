@@ -69,6 +69,16 @@ class CollectorTests(unittest.TestCase):
             collector.collect(self.metadata, 'test-target', self.destination, strict=True)
         self.assertTrue((self.destination / 'stale-egui-notice').exists())
 
+    def test_strict_accepts_reviewed_provenance_gap_and_keeps_it_in_inventory(self):
+        (self.source / 'LICENSE').write_text('licence text')
+        (self.root / 'vendor-notices/provenance-gaps.json').write_text(json.dumps({
+            'example-1.0.0': {'kind': 'later_upstream_notice',
+                              'review': {'status': 'accepted', 'date': '2026-10-26', 'basis': 'reviewed'}}
+        }))
+        result = collector.collect(self.metadata, 'test-target', self.destination, strict=True)
+        self.assertIn('example-1.0.0', result['provenance_gaps'])
+        self.assertFalse((self.destination / 'stale-egui-notice').exists())
+
     def test_failed_install_restores_previous_directory(self):
         stage = self.root / 'stage'
         stage.mkdir()

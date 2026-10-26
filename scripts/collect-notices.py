@@ -157,10 +157,12 @@ def collect(metadata, target, destination, strict=False):
             }
             inventory.append(entry)
         current_gaps = {f"{p['name']}-{p['version']}": p['provenance_gap'] for p in inventory if p['provenance_gap']}
+        # An accepted review records a distribution decision; the gap itself stays in the inventory.
+        unreviewed = [key for key, gap in current_gaps.items() if gap.get('review', {}).get('status') != 'accepted']
         if missing:
             raise RuntimeError('No notices or reviewed supplements for: ' + ', '.join(missing))
-        if strict and current_gaps:
-            raise RuntimeError('Strict notice review requires resolving: ' + ', '.join(current_gaps))
+        if strict and unreviewed:
+            raise RuntimeError('Strict notice review requires resolving: ' + ', '.join(unreviewed))
         local_components = collect_local_components(staged)
         result = {
             'target': target,
@@ -177,7 +179,7 @@ def collect(metadata, target, destination, strict=False):
     print('Packages without notices or supplements: none.')
     if current_gaps:
         print('Recorded upstream provenance gaps: ' + ', '.join(current_gaps))
-        print('These are explicit in inventory.json; --strict rejects them for distribution review.')
+        print('These are explicit in inventory.json; --strict rejects any without an accepted review.')
     return result
 
 

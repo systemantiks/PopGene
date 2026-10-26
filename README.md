@@ -53,7 +53,7 @@ cargo fmt --all --check
 
 The native UI has been exercised on macOS and Linux ARM64 with the coverage recorded above. Windows GNU x86_64 tests and the app compile/link with strict lint, but have not run on Windows; runtime and MSVC verification are unavailable. The [CI workflow](.github/workflows/rust.yml) defines checks and Linux package prerequisites.
 
-For local macOS packaging, run `scripts/package-macos.sh`. The bundle embeds Sparkle for **PopGene → Check for Updates…**; the first packaging run downloads a pinned, checksum-verified Sparkle distribution. Local builds are ad-hoc signed, not notarized. See [releasing and updates](docs/releases.md) for Developer ID signing, notarization, GitHub release drafts and the update feed. [Third-party notices](THIRD_PARTY.md) document unresolved dependency-notice provenance items that need review before public binary redistribution.
+For local macOS packaging, run `scripts/package-macos.sh`. The bundle embeds Sparkle for **PopGene → Check for Updates…**; the first packaging run downloads a pinned, checksum-verified Sparkle distribution. Local builds are ad-hoc signed, not notarized. See [releasing and updates](docs/releases.md) for Developer ID signing, notarization, GitHub release drafts and the update feed. [Third-party notices](THIRD_PARTY.md) record the reviewed dependency-notice provenance gaps.
 
 ## Development
 
