@@ -4,6 +4,8 @@ A native, offline sequence workbench built with Rust, GPUI and GPUI Kit. License
 
 PopGene opens synthetic example data on launch and works with local files without an account or network connection. Python is used only for developer tooling.
 
+![PopGene displaying a circular DNA map with annotations, primers and restriction enzyme details](docs/images/popgene-circular-dna.png)
+
 ## Features
 
 - Create DNA, RNA and protein documents; open multiple files or browse a project folder.
