@@ -1,0 +1,57 @@
+{
+  "scope": "Independent Rust native cleavage-arrow and explicit-enzyme-panel adapters use format facts from this public reference. No Python implementation or upstream sequence fixture is bundled.",
+  "repository": "https://github.com/kalekundert/autosnapgene",
+  "revision": "891785305d73565bf05adef79170d5b36652e8d2",
+  "license": "MIT",
+  "verification": "Native Feature cleavageArrows is comma-separated integer sequence-axis boundaries; original pUC19 AmpR has boundary2417 between segments1626–2417 and2418–2486. Original FLAG DNA/protein records contain type0 Golden Gate Enzymes with space-delimited member names. Active-set state, other panel types, visibility overrides and native line encoding are not inferred. Reference-app display acceptance remains separate.",
+  "files": [
+    {
+      "path": "LICENSE.txt",
+      "sha256": "855e686812371c88d48bad546197fc95a1ff72ab5a12cb9757ad06b56b790a88",
+      "bytes": 1079,
+      "url": "https://raw.githubusercontent.com/kalekundert/autosnapgene/891785305d73565bf05adef79170d5b36652e8d2/LICENSE.txt"
+    },
+    {
+      "path": "autosnapgene/blocks/features.py",
+      "sha256": "81f370edec9bef9f63b264c6102ee1afc7baacf40a36482d85ec2e9cb7195fde",
+      "bytes": 8734,
+      "url": "https://raw.githubusercontent.com/kalekundert/autosnapgene/891785305d73565bf05adef79170d5b36652e8d2/autosnapgene/blocks/features.py"
+    },
+    {
+      "path": "autosnapgene/blocks/enzymes.py",
+      "sha256": "6c2553597a6b9478a1c0dcdbe6fc1f77910e5f434482b77299244cb796a91571",
+      "bytes": 3284,
+      "url": "https://raw.githubusercontent.com/kalekundert/autosnapgene/891785305d73565bf05adef79170d5b36652e8d2/autosnapgene/blocks/enzymes.py"
+    },
+    {
+      "path": "tests/test_features.py",
+      "sha256": "1977ba8637e20fb4656b4f3a2f3349c7ec230d8e4b7adc71acbe033102fd6939",
+      "bytes": 6020,
+      "url": "https://raw.githubusercontent.com/kalekundert/autosnapgene/891785305d73565bf05adef79170d5b36652e8d2/tests/test_features.py"
+    },
+    {
+      "path": "tests/examples/puc19.dna",
+      "sha256": "c3d844d8a32d54743479a3ef87d70cd2b49acbc3048d1deee51ca4925819372a",
+      "bytes": 25835,
+      "url": "https://raw.githubusercontent.com/kalekundert/autosnapgene/891785305d73565bf05adef79170d5b36652e8d2/tests/examples/puc19.dna"
+    },
+    {
+      "path": "tests/examples/flag_tag.dna",
+      "sha256": "1fe34b18a77f6985ec06a38709189463763314a55e1f90068f7786bbd214a5e7",
+      "bytes": 11099,
+      "url": "https://raw.githubusercontent.com/kalekundert/autosnapgene/891785305d73565bf05adef79170d5b36652e8d2/tests/examples/flag_tag.dna"
+    },
+    {
+      "path": "tests/examples/flag_tag.prot",
+      "sha256": "590cc66fb09b8ef2aaf2beb22939767b31e98f19400e6c6c9725b56707300f60",
+      "bytes": 1319,
+      "url": "https://raw.githubusercontent.com/kalekundert/autosnapgene/891785305d73565bf05adef79170d5b36652e8d2/tests/examples/flag_tag.prot"
+    },
+    {
+      "path": "tests/examples/t7_promoter.dna",
+      "sha256": "8c9fbad84fef1c8c0c3244bc1496cca5d01199e312bd9ff982bbefb460a0c6fe",
+      "bytes": 11182,
+      "url": "https://raw.githubusercontent.com/kalekundert/autosnapgene/891785305d73565bf05adef79170d5b36652e8d2/tests/examples/t7_promoter.dna"
+    }
+  ]
+}

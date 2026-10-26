@@ -11,22 +11,31 @@ pub enum SaveFormat {
     Fasta,
     Embl,
     Abif,
+    Scf,
+    Ztr,
+    Fastq,
 }
 impl SaveFormat {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 8] = [
         Self::SnapGene,
         Self::GenBank,
         Self::Fasta,
         Self::Embl,
         Self::Abif,
+        Self::Scf,
+        Self::Ztr,
+        Self::Fastq,
     ];
     pub fn label(self) -> &'static str {
         match self {
-            Self::SnapGene => "SnapGene DNA",
+            Self::SnapGene => "SnapGene DNA / RNA / Protein",
             Self::GenBank => "GenBank / GenPept",
             Self::Fasta => "FASTA",
             Self::Embl => "EMBL",
-            Self::Abif => "ABIF trace (original)",
+            Self::Abif => "ABIF trace",
+            Self::Scf => "SCF trace",
+            Self::Ztr => "ZTR trace",
+            Self::Fastq => "FASTQ (Phred+33)",
         }
     }
     pub fn extension(self) -> &'static str {
@@ -36,10 +45,15 @@ impl SaveFormat {
             Self::Fasta => "fasta",
             Self::Embl => "embl",
             Self::Abif => "ab1",
+            Self::Scf => "scf",
+            Self::Ztr => "ztr",
+            Self::Fastq => "fastq",
         }
     }
     pub fn extension_for(self, doc: &Document) -> &'static str {
         match (self, doc.molecule) {
+            (Self::SnapGene, Molecule::Protein) => "prot",
+            (Self::SnapGene, Molecule::Rna) => "rna",
             (Self::Fasta, Molecule::Protein) => "faa",
             (Self::Fasta, Molecule::Rna) => "frna",
             (Self::GenBank, Molecule::Protein) => "gp",
@@ -49,12 +63,15 @@ impl SaveFormat {
     pub fn from_path(path: &Path) -> Option<Self> {
         let ext = path.extension()?.to_str()?.to_ascii_lowercase();
         match ext.as_str() {
-            "dna" => Some(Self::SnapGene),
+            "dna" | "rna" | "prot" => Some(Self::SnapGene),
             "gb" | "gbk" | "genbank" | "gbff" | "gbank" | "gbs" | "gen" | "gp" | "genpept"
             | "genpep" | "gpff" | "ape" => Some(Self::GenBank),
             "fa" | "fas" | "fasta" | "fna" | "ffn" | "faa" | "frna" | "pep" => Some(Self::Fasta),
             "emb" | "embl" | "ebl" | "dat" => Some(Self::Embl),
             "ab1" | "abi" | "abd" | "abf" => Some(Self::Abif),
+            "scf" => Some(Self::Scf),
+            "ztr" => Some(Self::Ztr),
+            "fastq" | "fq" => Some(Self::Fastq),
             _ => None,
         }
     }
@@ -63,9 +80,20 @@ impl SaveFormat {
             return false;
         }
         match self {
-            Self::SnapGene => doc.molecule == Molecule::Dna,
             Self::Embl => doc.molecule != Molecule::Protein,
-            Self::Abif => original_matches(doc, "ABIF"),
+            Self::Scf => doc
+                .trace
+                .as_ref()
+                .is_some_and(|trace| trace.qualities_known),
+            Self::Ztr => doc.trace.is_some(),
+            Self::Fastq => super::fastq::supports(doc),
+            Self::Abif => {
+                doc.trace.is_some()
+                    && doc
+                        .source
+                        .as_ref()
+                        .is_some_and(|s| s.format == "ABIF" && !s.bytes.is_empty())
+            }
             _ => true,
         }
     }
@@ -77,6 +105,9 @@ impl SaveFormat {
                 "FASTA" => Some(Self::Fasta),
                 "EMBL" => Some(Self::Embl),
                 "ABIF" => Some(Self::Abif),
+                "SCF" => Some(Self::Scf),
+                "ZTR" => Some(Self::Ztr),
+                "FASTQ" => Some(Self::Fastq),
                 _ => None,
             };
             if let Some(format) = format
@@ -93,16 +124,24 @@ fn equivalent(a: &Document, b: &Document) -> bool {
     a.name == b.name
         && a.molecule == b.molecule
         && a.single_stranded == b.single_stranded
+        && a.methylation == b.methylation
         && a.placeholder == b.placeholder
         && a.sequence == b.sequence
+        && a.sequence_qualities == b.sequence_qualities
+        && a.opposite_sequence_qualities == b.opposite_sequence_qualities
+        && a.sequence_colors == b.sequence_colors
         && a.circular == b.circular
         && a.description == b.description
         && a.accession == b.accession
         && a.comments == b.comments
         && a.features == b.features
+        && a.references == b.references
+        && a.duplex_ends == b.duplex_ends
+        && a.duplex_annotations == b.duplex_annotations
+        && a.annotation_lineage == b.annotation_lineage
         && a.trace == b.trace
 }
-fn original_matches(doc: &Document, format: &str) -> bool {
+pub(super) fn original_matches(doc: &Document, format: &str) -> bool {
     let Some(source) = &doc.source else {
         return false;
     };
@@ -116,13 +155,16 @@ fn original_matches(doc: &Document, format: &str) -> bool {
     };
     parsed.is_ok_and(|original| equivalent(doc, &original))
 }
-fn source_format(format: SaveFormat) -> &'static str {
+pub(super) fn source_format(format: SaveFormat) -> &'static str {
     match format {
         SaveFormat::SnapGene => "SnapGene",
         SaveFormat::GenBank => "GenBank",
         SaveFormat::Fasta => "FASTA",
         SaveFormat::Embl => "EMBL",
         SaveFormat::Abif => "ABIF",
+        SaveFormat::Scf => "SCF",
+        SaveFormat::Ztr => "ZTR",
+        SaveFormat::Fastq => "FASTQ",
     }
 }
 
@@ -132,8 +174,10 @@ pub fn encode(doc: &Document, format: SaveFormat) -> Result<Vec<u8>> {
     if !format.supports(doc) {
         return Err(Error::Message(if doc.placeholder {
             "Add sequence before saving this empty placeholder.".into()
+        } else if format == SaveFormat::Fastq {
+            "FASTQ requires a recorded quality for every nucleotide. Unknown confidence cannot be replaced by an invented Phred zero.".into()
         } else if format == SaveFormat::Abif {
-            "ABIF writing is limited to an unchanged original trace. Save sequence/annotations as GenBank or FASTA instead.".into()
+            "ABIF writing requires an imported ABIF chromatogram. Use SCF for a portable trace or FASTQ for calls and qualities.".into()
         } else {
             format!("{} cannot store this molecule type.", format.label())
         }));
@@ -146,15 +190,26 @@ pub fn encode(doc: &Document, format: SaveFormat) -> Result<Vec<u8>> {
         SaveFormat::GenBank => genbank_bytes(doc),
         SaveFormat::Fasta => Ok(fasta_bytes(doc)),
         SaveFormat::Embl => embl::write(doc),
-        SaveFormat::Abif => unreachable!("supports verifies the unchanged original"),
+        SaveFormat::Abif => abif::write(doc),
+        SaveFormat::Scf => super::scf::write(doc),
+        SaveFormat::Ztr => super::ztr::write(doc),
+        SaveFormat::Fastq => super::fastq::write(doc),
     }
 }
 
 /// Present these messages before writing; they describe information absent from the saved document.
 pub fn save_warnings(doc: &Document, format: SaveFormat) -> Vec<String> {
+    let mut warnings = base_warnings(doc, format);
+    warnings.extend(super::lineage::warnings(doc, format));
+    warnings
+}
+
+fn base_warnings(doc: &Document, format: SaveFormat) -> Vec<String> {
     if !format.supports(doc) {
         return vec![if doc.placeholder {
             "Add sequence before saving this empty placeholder.".into()
+        } else if format == SaveFormat::Fastq {
+            "FASTQ requires a recorded quality for every nucleotide; unknown confidence cannot be encoded as Phred zero.".into()
         } else {
             format!(
                 "{} cannot save this document in its current state.",
@@ -168,13 +223,71 @@ pub fn save_warnings(doc: &Document, format: SaveFormat) -> Vec<String> {
     if original_matches(doc, source_format(format)) {
         return vec![];
     }
-    let mut messages = vec![];
+    let (physical_preserved, mut messages) = super::duplex::preservation(doc, format);
+    if doc.methylation.is_some() && !physical_preserved {
+        messages.push("Recorded whole-template Dam/Dcm/EcoKI methylation flags are omitted by this format. These flags describe source assumptions, not measured site occupancy.".into());
+    }
+    if doc.opposite_sequence_qualities.is_some() && !physical_preserved {
+        messages.push("Opposite-strand quality scores are omitted by this format. FASTQ/trace exports carry only the active top-strand calls and qualities.".into());
+    }
+    if !doc.sequence_colors.is_empty() && !physical_preserved {
+        messages.push("Custom per-strand nucleotide colors are omitted by this format.".into());
+    }
+    if doc.duplex_ends.is_some() && !physical_preserved {
+        messages.push("Physical duplex ends, overhang geometry, opposite-strand-only residues and terminal modifications are omitted; only the top-strand sequence is saved. Use native DNA format to preserve physical ends.".into());
+    }
+    if !doc.duplex_annotations.is_empty() && !physical_preserved {
+        messages.push("Annotations and colors spanning opposite-strand-only residues require the full duplex extent and are omitted by this top-strand-only format.".into());
+    }
+    if matches!(
+        format,
+        SaveFormat::Scf | SaveFormat::Ztr | SaveFormat::Fastq
+    ) {
+        messages.push("This format saves the active calls and their qualities. Document annotations, references, topology, alternate call families and per-call manual-edit flags are omitted.".into());
+        if format == SaveFormat::Ztr {
+            messages.push("ZTR retains displayed A/C/G/T signals, active peaks, called confidence and comments. Unmodeled original chunks, other confidence channels and display crop are omitted; preserve the source file for these records.".into());
+        }
+        if format == SaveFormat::Scf {
+            messages.push("SCF retains all displayed signal channels and peak coordinates. The display crop is not stored. Original SCF comments/private bytes are retained; ABIF instrument records are not portable to SCF.".into());
+        }
+        if format == SaveFormat::Fastq && doc.trace.is_some() {
+            messages.push("FASTQ omits chromatogram signal, peak positions and instrument metadata. Keep a trace-format copy.".into());
+        }
+        if format == SaveFormat::Fastq && doc.molecule == Molecule::Rna {
+            messages.push("FASTQ writes nucleotide U as T and reopens as DNA.".into());
+        }
+        return messages;
+    }
+    if doc.sequence_qualities.is_some() && !physical_preserved {
+        messages.push(
+            "Per-symbol sequence quality scores are omitted; use FASTQ to preserve them.".into(),
+        );
+    }
+
+    if format == SaveFormat::Abif {
+        messages.push("Current calls, peaks and qualities replace edited family PBAS/PCON/PLOC1. Other instrument records, analysed/raw signals and original basecaller family 2 retain their original bytes. The former edited family 1 remains in the source file's unused bytes but is no longer an active call family.".into());
+        if doc
+            .trace
+            .as_ref()
+            .is_some_and(|t| t.sample_range.is_some() || t.manual_calls.iter().any(|m| *m))
+        {
+            messages.push("ABIF stores the edited calls and zero qualities for manual edits. The display crop and per-call manual flags are not standard ABIF fields and will not reopen; all raw signal samples remain.".into());
+        }
+        if !doc.features.is_empty() || !doc.references.is_empty() {
+            messages.push("ABIF does not store PopGene annotations or document references.".into());
+        }
+        messages.push("ABIF retains the original instrument metadata; changes to the document name, description, comments and accession are not written.".into());
+        return messages;
+    }
     if format == SaveFormat::Fasta {
         if doc.name.contains(['\r', '\n']) {
             messages.push("Line breaks in the record name are replaced by spaces.".into());
         }
         if !doc.features.is_empty() {
-            messages.push("FASTA omits all annotations and primer binding sites.".into());
+            messages.push("FASTA omits all annotations, primer binding sites, segment colors/names, line styles and cleavage markers.".into());
+        }
+        if !doc.references.is_empty() {
+            messages.push("FASTA omits all bibliographic references.".into());
         }
         if doc.circular || doc.single_stranded != (doc.molecule == Molecule::Rna) {
             messages.push(
@@ -189,6 +302,26 @@ pub fn save_warnings(doc: &Document, format: SaveFormat) -> Vec<String> {
         }
     }
     if matches!(format, SaveFormat::GenBank | SaveFormat::Embl) {
+        let extended_genbank =
+            format == SaveFormat::GenBank && super::genbank_display::uses_extension(doc);
+        if extended_genbank {
+            messages.push("GenBank display extensions use an Exported LOCUS and retain the document name in KEYWORDS. A clearly labeled software interoperability reference is appended only when the required final marker is absent; existing scientific references remain intact.".into());
+        }
+        if doc.references.iter().any(|r| !r.extra.is_empty()) {
+            messages.push("Bibliographic attributes without dedicated target fields are preserved as readable reference remarks/comments; their original separate attribute structure is not retained.".into());
+        }
+        if doc
+            .features
+            .iter()
+            .any(|f| f.parts.is_empty() && f.location.is_none())
+        {
+            messages.push("Unbound oligos have no INSDC feature location; this conversion is refused until they are explicitly removed or saved in native format.".into());
+        }
+        if doc.features.iter().any(|f| {
+            f.display_color_rgb().is_some() || f.display_segments().iter().any(|s| s.name.is_some())
+        }) {
+            messages.push("Annotation display metadata remains in conventional qualifiers/notes. Readers that do not implement this extension may show default colors, arrows or segment names.".into());
+        }
         let normalized = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
         if normalized(&doc.description) != doc.description
             || doc.comments.iter().any(|s| normalized(s) != *s)
@@ -201,7 +334,7 @@ pub fn save_warnings(doc: &Document, format: SaveFormat) -> Vec<String> {
             messages.push("Whitespace and line breaks in descriptions, comments and qualifier text are normalized on reopening.".into());
         }
         let normalized = safe_name(&doc.name);
-        if normalized != doc.name {
+        if normalized != doc.name && !extended_genbank {
             messages.push(format!(
                 "The record name will be saved as {normalized:?} to meet file-format naming rules."
             ));
@@ -222,11 +355,11 @@ pub fn save_warnings(doc: &Document, format: SaveFormat) -> Vec<String> {
             messages.push("Source references and unmodeled GenBank header fields are retained; review any coordinates or identifiers affected by sequence edits.".into());
         }
         if source.format == "SnapGene" {
-            messages.push("SnapGene history, alignments, end chemistry, display settings, unbound primers and unmodeled metadata are omitted. Keep the original .dna file for those records.".into());
-        } else if format == SaveFormat::Embl
-            || (source.format == "EMBL" && format != SaveFormat::Embl)
-        {
-            messages.push("Only the sequence, topology, supported features, description, accession and comments are written; other source header fields and references are omitted.".into());
+            messages.push("Native procedure history, embedded attachments, alignments, display settings and unmodeled native metadata are omitted from this target format. Structured references and supported feature qualifiers are written where the target supports them. Keep the native source for the omitted records.".into());
+        } else if source.format == "EMBL" && format != SaveFormat::Embl {
+            messages.push("Additional unmodeled EMBL header lines are omitted when converting formats; structured references are retained by GenBank.".into());
+        } else if source.format == "GenBank" && format == SaveFormat::Embl {
+            messages.push("Additional unmodeled GenBank header fields are omitted in EMBL conversion; structured references and feature locations are retained.".into());
         }
     }
     messages
@@ -263,6 +396,17 @@ pub fn save(
             "Use a .{} filename for {}. PopGene does not write a private file format.",
             format.extension_for(doc),
             format.label()
+        )));
+    }
+    if format == SaveFormat::SnapGene
+        && !path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case(format.extension_for(doc)))
+    {
+        return Err(Error::Message(format!(
+            "Use .{} for this native molecule type.",
+            format.extension_for(doc)
         )));
     }
     if format == SaveFormat::Fasta {
@@ -310,6 +454,37 @@ pub fn save(
 mod tests {
     use super::*;
     #[test]
+    fn methylation_assumptions_are_explicit_on_lossy_format_conversions() {
+        let mut doc = Document::new("recorded flags", "ACGT").unwrap();
+        assert!(
+            save_warnings(&doc, SaveFormat::SnapGene)
+                .iter()
+                .any(|warning| warning.contains("methylation flags are unknown"))
+        );
+        let bytes = encode(&doc, SaveFormat::GenBank).unwrap();
+        doc = import("flags.gb", &bytes).unwrap();
+        assert!(save_warnings(&doc, SaveFormat::GenBank).is_empty());
+        doc.methylation = Some(popgene_core::metadata::DnaMethylation::default());
+        for format in [SaveFormat::GenBank, SaveFormat::Embl, SaveFormat::Fasta] {
+            assert!(
+                save_warnings(&doc, format)
+                    .iter()
+                    .any(|warning| warning.contains("methylation flags are omitted"))
+            );
+            assert_eq!(
+                import("converted", &encode(&doc, format).unwrap())
+                    .unwrap()
+                    .methylation,
+                None
+            );
+        }
+        assert!(
+            !save_warnings(&doc, SaveFormat::SnapGene)
+                .iter()
+                .any(|warning| warning.contains("methylation flags are unknown"))
+        );
+    }
+    #[test]
     fn no_private_extension_can_be_written() {
         assert_eq!(SaveFormat::from_path(Path::new("old.popgene")), None);
         let doc = Document::new("dna", "ACGT").unwrap();
@@ -336,14 +511,28 @@ mod tests {
         assert!(warnings.contains("comments"));
     }
     #[test]
-    fn unchanged_abif_copy_retains_every_byte_and_rejects_edits() {
+    fn abif_copy_is_exact_and_edited_family_roundtrips_without_changing_other_records() {
         let bytes = include_bytes!("../../../validation/fixtures/synthetic-complete.ab1");
         let mut doc = import("trace.ab1", bytes).unwrap();
         assert_eq!(encode(&doc, SaveFormat::Abif).unwrap(), bytes);
         assert!(save_warnings(&doc, SaveFormat::Abif).is_empty());
-        doc.description.push_str(" changed");
-        assert!(!SaveFormat::Abif.supports(&doc));
-        assert!(encode(&doc, SaveFormat::Abif).is_err());
+        let old_trace = doc.trace.clone().unwrap();
+        popgene_core::trace::replace_call(&mut doc, 1, "N").unwrap();
+        assert!(SaveFormat::Abif.supports(&doc));
+        let encoded = encode(&doc, SaveFormat::Abif).unwrap();
+        let reopened = import("edited.ab1", &encoded).unwrap();
+        assert_eq!(reopened.sequence, doc.sequence);
+        let new_trace = reopened.trace.unwrap();
+        assert_eq!(new_trace.qualities, vec![40, 0, 30, 20, 5]);
+        assert_eq!(new_trace.channels, old_trace.channels);
+        assert_eq!(new_trace.peaks, old_trace.peaks);
+        assert_eq!(&encoded[..18], &bytes[..18]);
+        assert_eq!(&encoded[30..bytes.len()], &bytes[30..]);
+        assert!(
+            save_warnings(&doc, SaveFormat::Abif)
+                .join(" ")
+                .contains("manual flags")
+        );
     }
     #[test]
     fn genpept_roundtrip_retains_protein_and_stop_symbols() {

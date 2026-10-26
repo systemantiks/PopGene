@@ -1,7 +1,7 @@
 //! Explicit creation inputs; transformations are opt-in and invalid symbols are never dropped.
 use super::{Document, Error, MAX_BASES, Molecule};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Mode {
     #[default]
     Sequence,
@@ -9,7 +9,7 @@ pub enum Mode {
     Placeholder,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Request {
     pub molecule: Molecule,
     pub mode: Mode,

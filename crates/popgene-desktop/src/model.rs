@@ -19,7 +19,7 @@ const SAMPLE: &[u8] = include_bytes!("../../../validation/fixtures/annotated.gb"
 pub const MAX_TABS: usize = 64;
 const MAX_SOURCE_BYTES: usize = 256 * 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum View {
     Map,
     Sequence,
@@ -41,7 +41,7 @@ impl View {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum EnzymeFilter {
     #[default]
     UniqueSix,
@@ -78,6 +78,48 @@ impl EnzymeFilter {
     }
 }
 
+/// User display selection, separate from source records and biological edits.
+pub fn parse_enzyme_names(input: &str) -> Result<BTreeSet<String>, String> {
+    if input.len() > 64 * 1024 {
+        return Err("The enzyme list exceeds 64 KiB.".into());
+    }
+    let names = input
+        .split(|c: char| c.is_whitespace() || matches!(c, ',' | ';'))
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .collect();
+    validate_enzyme_names(&names)?;
+    Ok(names)
+}
+
+pub fn validate_enzyme_names(names: &BTreeSet<String>) -> Result<(), String> {
+    if names.len() > ENZYMES.len() {
+        return Err(format!(
+            "Select at most {} catalogue enzymes.",
+            ENZYMES.len()
+        ));
+    }
+    let unknown = names
+        .iter()
+        .filter(|name| !ENZYMES.iter().any(|enzyme| enzyme.name == name.as_str()))
+        .take(9)
+        .collect::<Vec<_>>();
+    if !unknown.is_empty() {
+        let listed = unknown
+            .iter()
+            .take(8)
+            .map(|name| name.chars().take(60).collect::<String>())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!(
+            "Unknown catalogue enzyme{}: {listed}{}. Use exact names, including case (for example, EcoRI).",
+            if unknown.len() == 1 { "" } else { "s" },
+            if unknown.len() > 8 { ", …" } else { "" }
+        ));
+    }
+    Ok(())
+}
+
 struct AnalysisJob {
     receiver: Receiver<Result<RestrictionAnalysis, String>>,
     cancel: Arc<AtomicBool>,
@@ -111,6 +153,8 @@ pub struct Tab {
     pub map_zoom: f32,
     pub map_find: bool,
     pub enzyme_filter: EnzymeFilter,
+    /// None uses the catalogue; an explicitly empty set displays no enzymes.
+    pub custom_enzyme_names: Option<BTreeSet<String>>,
     pub nonredundant: bool,
     pub restriction: Option<Arc<RestrictionAnalysis>>,
     pub restriction_error: Option<String>,
@@ -140,7 +184,147 @@ enum Completed {
     Saved(Box<Document>, PathBuf, SaveFormat, [u8; 32]),
     Exported(PathBuf),
 }
+
+pub struct PrimerEdit {
+    pub feature_id: Option<u64>,
+    pub name: String,
+    pub sequence: String,
+    pub bindings: Vec<Segment>,
+    pub reverse: bool,
+    pub reaction: popgene_core::primer::Reaction,
+    pub tm_c: Option<f64>,
+}
 impl Tab {
+    pub fn save_primers(&mut self, edits: &[PrimerEdit]) -> Result<Vec<u64>, String> {
+        if self.busy() || self.draft {
+            return Err("Finish the current operation first.".into());
+        }
+        let mut ids = vec![];
+        let success = self.apply(|doc| {
+            if doc.molecule == Molecule::Protein {
+                return Err(Error::Operation(
+                    "Primers require a nucleotide template.".into(),
+                ));
+            }
+            for edit in edits {
+                edit.reaction.validate().map_err(Error::Operation)?;
+                let sequence = Molecule::Dna.normalize(&edit.sequence)?;
+                if sequence.is_empty() || edit.name.trim().is_empty() {
+                    return Err(Error::Operation(
+                        "Enter a primer name and oligo sequence.".into(),
+                    ));
+                }
+                let binding_length: usize = edit
+                    .bindings
+                    .iter()
+                    .map(|p| p.end.saturating_sub(p.start))
+                    .sum();
+                if edit
+                    .bindings
+                    .iter()
+                    .any(|p| p.start >= p.end || p.end > doc.sequence.len())
+                    || binding_length > sequence.len()
+                {
+                    return Err(Error::Operation(
+                        "Primer bindings must fit the template and not exceed the oligo length."
+                            .into(),
+                    ));
+                }
+                let id = match edit.feature_id {
+                    Some(id) => {
+                        if !doc
+                            .features
+                            .iter()
+                            .any(|f| f.id == id && f.kind == "primer_bind")
+                        {
+                            return Err(Error::Operation(
+                                "The primer being edited is no longer present.".into(),
+                            ));
+                        }
+                        id
+                    }
+                    None => doc
+                        .features
+                        .iter()
+                        .chain(&doc.duplex_annotations.features)
+                        .map(|f| f.id)
+                        .max()
+                        .unwrap_or(0)
+                        .checked_add(1)
+                        .ok_or_else(|| {
+                            Error::Operation("Annotation identifier limit reached.".into())
+                        })?,
+                };
+                let mut feature = doc.features.iter().find(|f| f.id == id).cloned().unwrap_or(
+                    popgene_core::Feature {
+                        id,
+                        label: String::new(),
+                        kind: "primer_bind".into(),
+                        parts: vec![],
+                        location: None,
+                        reverse: false,
+                        qualifiers: vec![],
+                        edited: false,
+                    },
+                );
+                feature.label = edit.name.trim().to_string();
+                feature.parts = edit.bindings.clone();
+                feature.location = None;
+                feature.reverse = edit.reverse;
+                feature.edited = false;
+                feature.qualifiers.retain(|(key, _)| {
+                    !matches!(
+                        key.as_str(),
+                        "primer_sequence"
+                            | "binding_meltingTemperature"
+                            | "calculated_melting_temperature"
+                            | "primer_reaction"
+                            | "primer_calculation_method"
+                    )
+                });
+                feature
+                    .qualifiers
+                    .push(("primer_sequence".into(), Some(sequence)));
+                feature.qualifiers.push((
+                    "primer_reaction".into(),
+                    Some(
+                        serde_json::to_string(&edit.reaction)
+                            .map_err(|e| Error::Operation(e.to_string()))?,
+                    ),
+                ));
+                if let Some(tm) = edit.tm_c.filter(|v| v.is_finite()) {
+                    feature.qualifiers.push((
+                        "calculated_melting_temperature".into(),
+                        Some(format!("{tm:.6}")),
+                    ));
+                    feature.qualifiers.push((
+                        "primer_calculation_method".into(),
+                        Some(popgene_core::primer::METHOD.into()),
+                    ));
+                }
+                if let Some(existing) = doc.features.iter_mut().find(|f| f.id == id) {
+                    *existing = feature;
+                } else {
+                    doc.features.push(feature);
+                }
+                ids.push(id);
+            }
+            Ok(())
+        });
+        if success {
+            self.message(
+                format!(
+                    "Saved {} primer{}",
+                    ids.len(),
+                    if ids.len() == 1 { "" } else { "s" }
+                ),
+                false,
+            );
+            Ok(ids)
+        } else {
+            Err(self.status.clone())
+        }
+    }
     /// Reveal sequence targets without collapsing an existing split layout.
     pub fn show_sequence(&mut self) {
         if !self.view.has_sequence() {
@@ -182,6 +366,7 @@ impl Tab {
             map_zoom: 1.0,
             map_find: false,
             enzyme_filter: EnzymeFilter::default(),
+            custom_enzyme_names: None,
             nonredundant: true,
             restriction: None,
             restriction_error: None,
@@ -297,6 +482,19 @@ impl Tab {
             if scroll {
                 self.scroll_to = Some(part.start);
             }
+        } else if let Some(annotation) =
+            feature.and_then(|id| self.editor.document.features.iter().find(|f| f.id == id))
+        {
+            self.range_start.clear();
+            self.range_end.clear();
+            if scroll
+                && let Some(boundary) = annotation
+                    .location
+                    .as_ref()
+                    .and_then(|l| l.local_boundaries().first().copied())
+            {
+                self.scroll_to = Some(boundary.min(len.saturating_sub(1)));
+            }
         }
         let length: usize = parts.iter().map(|p| p.end - p.start).sum();
         let gc: usize = parts
@@ -318,7 +516,16 @@ impl Tab {
             .map(|f| format!("{} · ", f.label))
             .unwrap_or_default();
         self.selection_summary = if length == 0 {
-            String::new()
+            feature
+                .and_then(|id| self.editor.document.features.iter().find(|f| f.id == id))
+                .map(|f| {
+                    format!(
+                        "{} · {} · no sequence bases selected",
+                        f.label,
+                        f.location_label()
+                    )
+                })
+                .unwrap_or_default()
         } else {
             format!(
                 "{name}{locations} · {length} {}{}",
@@ -390,6 +597,42 @@ impl Tab {
         }
         true
     }
+    pub fn enzyme_selection_label(&self) -> String {
+        match &self.custom_enzyme_names {
+            None => "All catalogue enzymes".into(),
+            Some(names) if names.is_empty() => "Custom list: no enzymes".into(),
+            Some(names) => format!("Custom list: {} enzymes", names.len()),
+        }
+    }
+    pub fn set_enzyme_selection(&mut self, names: Option<BTreeSet<String>>) -> Result<(), String> {
+        if let Some(names) = &names {
+            validate_enzyme_names(names)?;
+        }
+        self.custom_enzyme_names = names;
+        Ok(())
+    }
+    /// Shared by map/sequence sites, the enzyme table, and figure inputs.
+    pub fn includes_enzyme(&self, index: usize, count: usize) -> bool {
+        ENZYMES.get(index).is_some_and(|enzyme| {
+            self.enzyme_filter
+                .includes(count, enzyme.recognition_length())
+                && self
+                    .custom_enzyme_names
+                    .as_ref()
+                    .is_none_or(|names| names.contains(enzyme.name))
+        })
+    }
+    pub fn displayed_enzyme_indices(&self) -> Vec<usize> {
+        let Some(analysis) = &self.restriction else {
+            return vec![];
+        };
+        analysis
+            .counts
+            .iter()
+            .enumerate()
+            .filter_map(|(index, &count)| self.includes_enzyme(index, count).then_some(index))
+            .collect()
+    }
     pub fn displayed_sites(&self) -> Vec<&RestrictionSite> {
         let Some(analysis) = &self.restriction else {
             return vec![];
@@ -398,17 +641,13 @@ impl Tab {
             .sites
             .iter()
             .filter(|site| {
-                let enzyme = &ENZYMES[site.enzyme_index];
-                self.enzyme_filter
-                    .includes(analysis.counts[site.enzyme_index], enzyme.recognition.len())
-                    && site.top_cut.is_some()
-                    && site.bottom_cut.is_some()
+                self.includes_enzyme(site.enzyme_index, analysis.counts[site.enzyme_index])
             })
             .collect()
     }
     pub fn site_parts(&self, site: &RestrictionSite) -> Vec<Segment> {
         let n = self.editor.document.sequence.len();
-        let end = site.start + ENZYMES[site.enzyme_index].recognition.len();
+        let end = site.start + site.recognition_length;
         if end > n {
             vec![
                 Segment {
@@ -566,7 +805,7 @@ pub enum Close {
     Quit,
 }
 enum Loaded {
-    File(Box<Document>, PathBuf, Option<[u8; 32]>),
+    File(Vec<Document>, PathBuf, Option<[u8; 32]>),
     Folder(Project),
 }
 pub struct Model {
@@ -578,11 +817,11 @@ pub struct Model {
     pub pending_close: Option<Close>,
     pub waiting_save: Option<u64>,
     pub allow_close: bool,
-    next_id: u64,
+    pub(crate) next_id: u64,
     queue: VecDeque<PathBuf>,
     opening: Option<Receiver<Result<Loaded, String>>>,
     opening_path: Option<PathBuf>,
-    discarded: BTreeSet<u64>,
+    pub(crate) discarded: BTreeSet<u64>,
 }
 impl Model {
     pub fn new() -> Self {
@@ -724,7 +963,8 @@ impl Model {
                 // Detect concurrent edits even while loading, rather than associating a
                 // newer file hash with an older parsed document.
                 let before = formats::digest(&path).map_err(|e| e.to_string())?;
-                let doc = formats::open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+                let docs =
+                    formats::open_records(&path).map_err(|e| format!("{}: {e}", path.display()))?;
                 let after = formats::digest(&path).map_err(|e| e.to_string())?;
                 if before != after {
                     return Err(format!(
@@ -733,7 +973,7 @@ impl Model {
                     ));
                 }
                 let hash = Some(after);
-                Ok(Loaded::File(Box::new(doc), path, hash))
+                Ok(Loaded::File(docs, path, hash))
             }));
             break;
         }
@@ -758,8 +998,8 @@ impl Model {
                     );
                     self.project = Some(project);
                 }
-                Ok(Loaded::File(doc, path, hash)) => {
-                    self.add_document(*doc, Some(path), hash);
+                Ok(Loaded::File(docs, path, hash)) => {
+                    self.add_records(docs, path, hash);
                 }
                 Err(error) => {
                     self.status = "Some files could not be opened — see Import report".into();
@@ -850,6 +1090,9 @@ impl Model {
                             | (SaveFormat::Fasta, "FASTA")
                             | (SaveFormat::Embl, "EMBL")
                             | (SaveFormat::Abif, "ABIF")
+                            | (SaveFormat::Scf, "SCF")
+                            | (SaveFormat::Ztr, "ZTR")
+                            | (SaveFormat::Fastq, "FASTQ")
                     )
                 })
             })
@@ -863,6 +1106,155 @@ impl Model {
         self.tabs.push(tab);
         self.active = self.tabs.len() - 1;
         self.status = "File opened · original source retained".into();
+        true
+    }
+    /// Generated products open atomically and are unsaved from the outset.
+    pub fn add_generated_documents(
+        &mut self,
+        documents: Vec<Document>,
+        status: &str,
+    ) -> Result<(), String> {
+        if documents.is_empty() {
+            return Err("No products were selected".into());
+        }
+        let replace = self
+            .current()
+            .filter(|t| t.draft && !t.dirty())
+            .map(|t| t.id);
+        if self.tabs.len() + documents.len() - usize::from(replace.is_some()) > MAX_TABS {
+            return Err(
+                "The products would exceed the 64-tab limit. Select fewer products or close files."
+                    .into(),
+            );
+        }
+        let used: usize = self
+            .tabs
+            .iter()
+            .map(|tab| {
+                let source = tab.editor.document.source.as_ref();
+                source.map_or(0, |s| s.bytes.len())
+                    + tab.original_source.as_ref().map_or(0, |original| {
+                        if source.is_some_and(|s| Arc::ptr_eq(&s.bytes, &original.bytes)) {
+                            0
+                        } else {
+                            original.bytes.len()
+                        }
+                    })
+            })
+            .sum();
+        let incoming: usize = documents
+            .iter()
+            .map(|doc| doc.source.as_ref().map_or(0, |s| s.bytes.len()))
+            .sum();
+        if used.saturating_add(incoming) > MAX_SOURCE_BYTES {
+            return Err("These products exceed the retained-source memory limit. Close files before creating them.".into());
+        }
+        let count = u64::try_from(documents.len()).map_err(|_| "Too many products")?;
+        let next = self
+            .next_id
+            .checked_add(count)
+            .ok_or("Document identifier limit reached")?;
+        for doc in &documents {
+            doc.validate().map_err(|e| e.to_string())?;
+        }
+        let tabs = documents
+            .into_iter()
+            .enumerate()
+            .map(|(i, doc)| {
+                let mut tab = Tab::from_document(self.next_id + i as u64, doc);
+                tab.unsaved = true;
+                tab.message(status, false);
+                tab
+            })
+            .collect::<Vec<_>>();
+        if let Some(id) = replace {
+            self.remove_tab(id);
+        }
+        self.tabs.extend(tabs);
+        self.next_id = next;
+        self.active = self.tabs.len() - 1;
+        self.status = status.into();
+        Ok(())
+    }
+
+    /// A multi-record source opens atomically as independent documents. Each
+    /// record uses Save As; saving one must never replace its sibling records.
+    pub fn add_records(
+        &mut self,
+        mut docs: Vec<Document>,
+        path: PathBuf,
+        hash: Option<[u8; 32]>,
+    ) -> bool {
+        if docs.len() == 1 {
+            return self.add_document(docs.remove(0), Some(path), hash);
+        }
+        if docs.is_empty() {
+            return false;
+        }
+        let path = resolved(&path);
+        if let Some(i) = self
+            .tabs
+            .iter()
+            .position(|t| t.source_path.as_ref() == Some(&path))
+        {
+            self.active = i;
+            return true;
+        }
+        let replace = self
+            .current()
+            .filter(|t| t.draft && !t.dirty())
+            .map(|t| t.id);
+        let used: usize = self
+            .tabs
+            .iter()
+            .map(|tab| {
+                let current = tab.editor.document.source.as_ref();
+                current.map_or(0, |s| s.bytes.len())
+                    + tab.original_source.as_ref().map_or(0, |s| {
+                        if current.is_some_and(|c| Arc::ptr_eq(&c.bytes, &s.bytes)) {
+                            0
+                        } else {
+                            s.bytes.len()
+                        }
+                    })
+            })
+            .sum();
+        let incoming: usize = docs
+            .iter()
+            .map(|d| d.source.as_ref().map_or(0, |s| s.bytes.len()))
+            .sum();
+        if self.tabs.len() + docs.len() - usize::from(replace.is_some()) > MAX_TABS
+            || used.saturating_add(incoming) > MAX_SOURCE_BYTES
+        {
+            self.issues.push(format!("{}: {} records would exceed the open-tab limit (64 tabs / 256 MiB source attachments). No records were opened; close tabs and try again.", path.display(), docs.len()));
+            self.status = "Multi-record file exceeds workspace limits — see report".into();
+            return false;
+        }
+        if let Some(error) = docs.iter().find_map(|d| d.validate().err()) {
+            self.issues.push(format!("{}: {error}", path.display()));
+            return false;
+        }
+        if let Some(id) = replace {
+            self.remove_tab(id);
+        }
+        let first = self.tabs.len();
+        let count = docs.len();
+        for (index, doc) in docs.into_iter().enumerate() {
+            let mut tab = Tab::from_document(self.next_id, doc);
+            self.next_id += 1;
+            tab.source_path = Some(path.clone());
+            tab.disk_hash = hash;
+            tab.message(
+                format!(
+                    "Record {} of {count} · use Save As to save this record separately",
+                    index + 1
+                ),
+                false,
+            );
+            self.tabs.push(tab);
+        }
+        self.active = first;
+        self.status = format!("Opened {count} records · original file retained");
         true
     }
     fn collision(&self, index: usize, path: &Path, export: bool) -> bool {
@@ -976,6 +1368,87 @@ impl Model {
         let tab = &mut self.tabs[index];
         tab.message("Recovering original source…", false);
         tab.start_job(path.clone(), move || {
+            formats::atomic_export(&path, &bytes).map_err(|e| e.to_string())?;
+            Ok(Completed::Exported(path))
+        });
+        true
+    }
+    pub fn export_attachment_to(
+        &mut self,
+        index: usize,
+        attachment_id: u32,
+        path: PathBuf,
+    ) -> bool {
+        let Some(tab) = self.tabs.get(index).filter(|t| !t.draft && !t.busy()) else {
+            return false;
+        };
+        let Some(source) = tab.original_source.clone() else {
+            return false;
+        };
+        let path = resolved(&path);
+        if self.collision(index, &path, true) {
+            self.tabs[index].message(
+                "Choose an attachment destination that is not open or being written.",
+                true,
+            );
+            return false;
+        }
+        let tab = &mut self.tabs[index];
+        tab.message("Extracting embedded attachment…", false);
+        tab.start_job(path.clone(), move || {
+            let bytes = formats::native_attachment_bytes(&source, attachment_id)
+                .map_err(|e| e.to_string())?;
+            formats::atomic_export(&path, &bytes).map_err(|e| e.to_string())?;
+            Ok(Completed::Exported(path))
+        });
+        true
+    }
+    pub fn export_figure_to(
+        &mut self,
+        index: usize,
+        path: PathBuf,
+        svg: String,
+        format: crate::figure::FigureFormat,
+        scale: f32,
+        page_height: Option<u32>,
+    ) -> bool {
+        if self
+            .tabs
+            .get(index)
+            .is_none_or(|tab| tab.draft || tab.busy())
+        {
+            return false;
+        }
+        if path
+            .extension()
+            .and_then(|s| s.to_str())
+            .is_none_or(|s| !s.eq_ignore_ascii_case(format.extension()))
+        {
+            self.tabs[index].message(
+                format!(
+                    "Use the .{} extension for this figure format.",
+                    format.extension()
+                ),
+                true,
+            );
+            return false;
+        }
+        let path = resolved(&path);
+        if self.collision(index, &path, true) {
+            self.tabs[index].message(
+                "Export figures to a destination that is not open or being written.",
+                true,
+            );
+            return false;
+        }
+        let tab = &mut self.tabs[index];
+        tab.message("Rendering publication figure…", false);
+        tab.start_job(path.clone(), move || {
+            let bytes = if page_height.is_some() {
+                crate::figure::encode_with_pages(&svg, format, scale, page_height)?
+            } else {
+                crate::figure::encode(&svg, format, scale)?
+            };
             formats::atomic_export(&path, &bytes).map_err(|e| e.to_string())?;
             Ok(Completed::Exported(path))
         });
@@ -1124,13 +1597,559 @@ fn resolved(path: &Path) -> PathBuf {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::{
         sync::atomic::{AtomicU64, Ordering},
         time::{Duration, Instant},
     };
     static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
+
+    pub(crate) fn physical_phase_two_fragments() -> Vec<Document> {
+        use popgene_core::{metadata, restriction, workflow};
+        let mut source = Document::new("physical phase two", "ATGGAATTCAAGTAA").unwrap();
+        source
+            .annotate("coding α".into(), Segment { start: 0, end: 15 }, false)
+            .unwrap();
+        source.features[0].kind = "CDS".into();
+        source.features[0].qualifiers.extend([
+            ("codon_start".into(), Some("2".into())),
+            ("citation".into(), Some("1".into())),
+            ("snapgene_color".into(), Some("#336699".into())),
+        ]);
+        source.references.push(metadata::Reference {
+            title: "Physical fragment integration α".into(),
+            authors: Some("Synthetic, A.".into()),
+            ..Default::default()
+        });
+        source.sequence_qualities = Some((0..15).map(|q| (q != 1).then_some(q)).collect());
+        source.opposite_sequence_qualities =
+            Some((30..45).map(|q| (q != 32).then_some(q)).collect());
+        source.sequence_colors = vec![
+            metadata::SequenceColor {
+                range: Segment { start: 0, end: 3 },
+                reverse: false,
+                color_rgb: 0x112233,
+            },
+            metadata::SequenceColor {
+                range: Segment { start: 9, end: 12 },
+                reverse: true,
+                color_rgb: 0x993366,
+            },
+        ];
+        let enzyme = restriction::ENZYMES
+            .iter()
+            .position(|enzyme| enzyme.name == "EcoRI")
+            .unwrap();
+        let conditions = restriction::DigestConditions::default();
+        let digest = restriction::digest_document(&source, &[enzyme], conditions).unwrap();
+        let fragments =
+            workflow::digest_products(&source, &digest.fragments, &["EcoRI".into()], conditions)
+                .unwrap();
+        assert_eq!(fragments[0].sequence.as_ref(), "ATGG");
+        assert_eq!(
+            fragments[0].duplex_ends.as_ref().unwrap().opposite_sequence,
+            "AATTCCAT"
+        );
+        assert_eq!(fragments[1].sequence.as_ref(), "AATTCAAGTAA");
+        assert_eq!(
+            fragments[1].duplex_ends.as_ref().unwrap().opposite_sequence,
+            "TTACTTG"
+        );
+        assert_eq!(
+            fragments[0].duplex_annotations.features[0].qualifier("codon_start"),
+            Some("2")
+        );
+        assert_eq!(fragments[1].features[0].qualifier("codon_start"), Some("1"));
+        fragments
+    }
+
+    pub(crate) fn assert_physical_fragment(actual: &Document, original: &Document) {
+        assert_eq!(actual.sequence, original.sequence);
+        assert_eq!(
+            actual.duplex_ends, original.duplex_ends,
+            "{:?}",
+            actual.warnings
+        );
+        assert_eq!(actual.sequence_qualities, original.sequence_qualities);
+        assert_eq!(
+            actual.opposite_sequence_qualities,
+            original.opposite_sequence_qualities
+        );
+        assert_eq!(actual.sequence_colors, original.sequence_colors);
+        assert_eq!(
+            actual.duplex_annotations.sequence_colors,
+            original.duplex_annotations.sequence_colors
+        );
+        assert_eq!(
+            actual.annotation_lineage.origins,
+            original.annotation_lineage.origins
+        );
+        assert_eq!(actual.annotation_lineage.pieces.len(), 1);
+        assert!(
+            actual
+                .annotation_lineage
+                .pieces
+                .iter()
+                .all(|piece| actual.annotation_lineage.actionable_piece(actual, piece))
+        );
+        let features: Vec<_> = actual
+            .features
+            .iter()
+            .chain(&actual.duplex_annotations.features)
+            .collect();
+        let expected: Vec<_> = original
+            .features
+            .iter()
+            .chain(&original.duplex_annotations.features)
+            .collect();
+        assert_eq!(features.len(), 1);
+        assert_eq!(features[0].location_label(), expected[0].location_label());
+        assert_eq!(
+            features[0].qualifier("codon_start"),
+            expected[0].qualifier("codon_start")
+        );
+        assert_eq!(features[0].display_color_rgb(), Some(0x336699));
+        let citation: usize = features[0]
+            .qualifier("citation")
+            .unwrap()
+            .trim()
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse()
+            .unwrap();
+        assert_eq!(
+            actual.references[citation - 1].title,
+            "Physical fragment integration α"
+        );
+        assert_eq!(
+            actual.references[citation - 1].authors.as_deref(),
+            Some("Synthetic, A.")
+        );
+    }
+
+    pub(crate) fn assert_physical_phase_two_rejoin(left: &Document, right: &Document) {
+        use popgene_core::{cloning, translation};
+        let product = cloning::ligate(
+            &[left, right].map(|document| cloning::AssemblyInput {
+                document: document.clone(),
+                reverse: false,
+            }),
+            cloning::LigationOptions::default(),
+            "saved physical rejoin",
+        )
+        .unwrap();
+        assert_eq!(product.sequence.as_ref(), "ATGGAATTCAAGTAA");
+        assert_eq!(
+            product.duplex_ends.as_ref().unwrap().opposite_sequence,
+            "TTACTTGAATTCCAT"
+        );
+        assert_eq!(product.features.len(), 1);
+        assert!(product.duplex_annotations.features.is_empty());
+        let feature = &product.features[0];
+        assert_eq!(feature.location_label(), "1..15");
+        assert_eq!(feature.qualifier("codon_start"), Some("2"));
+        assert_eq!(feature.display_color_rgb(), Some(0x336699));
+        assert_eq!(
+            translation::translate_cds(&product, feature)
+                .unwrap()
+                .amino_acids,
+            b"WNSS"
+        );
+        let citation: usize = feature
+            .qualifier("citation")
+            .unwrap()
+            .trim()
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse()
+            .unwrap();
+        assert_eq!(
+            product.references[citation - 1].title,
+            "Physical fragment integration α"
+        );
+        assert_eq!(
+            product.sequence_qualities,
+            Some((0..15).map(|q| (q != 1).then_some(q)).collect())
+        );
+        assert_eq!(
+            product.opposite_sequence_qualities,
+            Some((30..45).map(|q| (q != 32).then_some(q)).collect())
+        );
+        assert!(
+            product
+                .sequence_colors
+                .iter()
+                .any(|color| color.range == Segment { start: 0, end: 3 }
+                    && !color.reverse
+                    && color.color_rgb == 0x112233)
+        );
+        assert!(
+            product
+                .sequence_colors
+                .iter()
+                .any(|color| color.range == Segment { start: 9, end: 12 }
+                    && color.reverse
+                    && color.color_rgb == 0x993366)
+        );
+    }
+
+    #[test]
+    fn physical_fragment_saved_projection_reopen_and_undo_redo_preserve_reassembly() {
+        for format in [SaveFormat::GenBank, SaveFormat::Embl] {
+            let temp = Temp::new();
+            let fragments = physical_phase_two_fragments();
+            let mut model = Model::new();
+            model.tabs = fragments
+                .iter()
+                .enumerate()
+                .map(|(i, document)| Tab::from_document(i as u64 + 1, document.clone()))
+                .collect();
+            let mut reopened = Vec::new();
+            for (index, original) in fragments.iter().enumerate() {
+                let warnings = formats::save_warnings(original, format);
+                assert!(
+                    !warnings
+                        .iter()
+                        .any(|warning| warning.contains("supplement is omitted")),
+                    "{warnings:?}"
+                );
+                let path = temp
+                    .0
+                    .join(format!("fragment-{index}.{}", format.extension()));
+                assert!(model.save_to(index, path.clone(), format));
+                settle(&mut model);
+                let tab = &model.tabs[index];
+                assert!(!tab.error, "{}: {}", format.label(), tab.status);
+                assert!(!tab.dirty());
+                assert!(!tab.unsaved);
+                assert_eq!(tab.path.as_ref(), Some(&path.canonicalize().unwrap()));
+                assert_eq!(tab.editor.document, tab.saved);
+                let bytes = std::fs::read(&path).unwrap();
+                assert_eq!(
+                    tab.saved.source.as_ref().unwrap().bytes.as_ref(),
+                    bytes.as_slice()
+                );
+                let from_disk = formats::open(&path).unwrap();
+                assert_physical_fragment(&tab.editor.document, original);
+                assert_physical_fragment(&from_disk, original);
+                assert_eq!(from_disk.annotation_lineage, tab.saved.annotation_lineage);
+                reopened.push(from_disk);
+            }
+            // Reassembly uses only separately decoded public files, not the
+            // original source or the model's pre-save documents.
+            assert_physical_phase_two_rejoin(&reopened[0], &reopened[1]);
+            let canonical = model.tabs[1].editor.document.clone();
+            assert!(model.tabs[1].apply(|document| document.replace(5, 6, "T")));
+            let edited = model.tabs[1].editor.document.clone();
+            assert!(model.tabs[1].dirty());
+            assert!(edited.annotation_lineage.pieces.is_empty());
+            model.tabs[1].undo();
+            assert_eq!(model.tabs[1].editor.document, canonical);
+            assert!(!model.tabs[1].dirty());
+            assert_physical_phase_two_rejoin(&reopened[0], &model.tabs[1].editor.document);
+            model.tabs[1].redo();
+            assert_eq!(model.tabs[1].editor.document, edited);
+            assert!(model.tabs[1].dirty());
+            assert!(
+                model.tabs[1]
+                    .editor
+                    .document
+                    .annotation_lineage
+                    .pieces
+                    .is_empty()
+            );
+        }
+    }
+
+    fn lineage_document() -> Document {
+        let mut source = Document::new("saved ancestry", "ATGGAATTCAAGTAA").unwrap();
+        source
+            .annotate("whole CDS".into(), Segment { start: 0, end: 15 }, false)
+            .unwrap();
+        source.features[0].kind = "CDS".into();
+        source.features[0]
+            .qualifiers
+            .push(("codon_start".into(), Some("1".into())));
+        // This is a fully paired, exact-location fixture: flat-file physical-end
+        // loss and native fuzzy-location policy are separate codec constraints.
+        popgene_core::workflow::extract_region(&source, 0, 15, "saved ancestry").unwrap()
+    }
+
+    #[test]
+    fn lineage_supported_save_canonical_projection_and_reopen_remain_actionable() {
+        for format in [SaveFormat::SnapGene, SaveFormat::GenBank, SaveFormat::Embl] {
+            let temp = Temp::new();
+            let path = temp.0.join(format!("ancestry.{}", format.extension()));
+            let original = lineage_document();
+            assert!(!original.annotation_lineage.pieces.is_empty());
+            let origin_ids = original
+                .annotation_lineage
+                .origins
+                .iter()
+                .map(|origin| origin.id.clone())
+                .collect::<Vec<_>>();
+            let mut model = Model::new();
+            model.tabs = vec![Tab::from_document(1, original.clone())];
+            assert!(model.save_to(0, path.clone(), format));
+            settle(&mut model);
+            let tab = &model.tabs[0];
+            assert!(!tab.error, "{}: {}", format.label(), tab.status);
+            assert!(!tab.dirty());
+            let canonical = &tab.editor.document;
+            assert_eq!(
+                canonical.annotation_lineage.instance_id,
+                original.annotation_lineage.instance_id
+            );
+            assert_eq!(
+                canonical
+                    .annotation_lineage
+                    .origins
+                    .iter()
+                    .map(|origin| origin.id.clone())
+                    .collect::<Vec<_>>(),
+                origin_ids
+            );
+            assert_eq!(canonical.annotation_lineage.pieces.len(), 1);
+            assert!(canonical.annotation_lineage.pieces.iter().all(|piece| {
+                canonical
+                    .annotation_lineage
+                    .actionable_piece(canonical, piece)
+            }));
+            let reopened = formats::open(&path).unwrap();
+            assert_eq!(reopened.annotation_lineage, canonical.annotation_lineage);
+            assert_eq!(tab.saved.annotation_lineage, canonical.annotation_lineage);
+            assert_eq!(
+                reopened.feature_sequence(&reopened.features[0]).unwrap(),
+                "ATGGAATTCAAGTAA"
+            );
+        }
+    }
+
+    #[test]
+    fn lineage_lossy_save_is_undoable_while_export_retains_live_evidence() {
+        let temp = Temp::new();
+        let export = temp.0.join("export.fasta");
+        let saved = temp.0.join("saved.fasta");
+        let original = lineage_document();
+        assert!(
+            formats::save_warnings(&original, SaveFormat::Fasta)
+                .iter()
+                .any(|warning| warning.contains("ancestry"))
+        );
+        let mut model = Model::new();
+        model.tabs = vec![Tab::from_document(1, original.clone())];
+        assert!(model.export_to(0, export.clone(), SaveFormat::Fasta));
+        settle(&mut model);
+        assert!(!model.tabs[0].error, "{}", model.tabs[0].status);
+        assert_eq!(model.tabs[0].editor.document, original);
+        assert!(
+            formats::open(&export)
+                .unwrap()
+                .annotation_lineage
+                .is_empty()
+        );
+        assert!(model.save_to(0, saved.clone(), SaveFormat::Fasta));
+        settle(&mut model);
+        let tab = &mut model.tabs[0];
+        assert!(!tab.error, "{}", tab.status);
+        assert!(!tab.dirty());
+        assert!(tab.editor.document.annotation_lineage.is_empty());
+        assert!(tab.saved.annotation_lineage.is_empty());
+        assert!(formats::open(&saved).unwrap().annotation_lineage.is_empty());
+        tab.undo();
+        assert_eq!(tab.editor.document, original);
+        assert!(tab.dirty());
+        assert!(
+            tab.editor
+                .document
+                .annotation_lineage
+                .pieces
+                .iter()
+                .all(|piece| tab
+                    .editor
+                    .document
+                    .annotation_lineage
+                    .actionable_piece(&tab.editor.document, piece))
+        );
+        tab.redo();
+        assert!(tab.editor.document.annotation_lineage.is_empty());
+        assert!(!tab.dirty());
+    }
+
+    #[test]
+    fn generated_products_open_atomically_and_are_unsaved() {
+        let mut model = Model::new();
+        let before = model
+            .tabs
+            .iter()
+            .map(|t| (t.id, t.editor.document.clone()))
+            .collect::<Vec<_>>();
+        let first = Document::new("first product", "ACGT").unwrap();
+        let mut invalid = Document::new("invalid product", "ACGT").unwrap();
+        invalid.sequence = "?".into();
+        assert!(
+            model
+                .add_generated_documents(vec![first.clone(), invalid], "created")
+                .is_err()
+        );
+        assert_eq!(
+            model
+                .tabs
+                .iter()
+                .map(|t| (t.id, t.editor.document.clone()))
+                .collect::<Vec<_>>(),
+            before
+        );
+        model
+            .add_generated_documents(
+                vec![first, Document::new("second product", "TGCA").unwrap()],
+                "created",
+            )
+            .unwrap();
+        assert_eq!(model.tabs.len(), before.len() + 2);
+        for tab in &model.tabs[before.len()..] {
+            assert!(tab.dirty());
+            assert!(tab.path.is_none());
+            assert!(tab.original_source.is_none());
+            assert_eq!(tab.status, "created");
+        }
+        assert_eq!(
+            model
+                .tabs
+                .iter()
+                .take(before.len())
+                .map(|t| (t.id, t.editor.document.clone()))
+                .collect::<Vec<_>>(),
+            before
+        );
+    }
+
+    fn primer_edit(name: &str, bindings: Vec<Segment>) -> PrimerEdit {
+        PrimerEdit {
+            feature_id: None,
+            name: name.into(),
+            sequence: "ACGTACGTACGTACGTACGT".into(),
+            bindings,
+            reverse: false,
+            reaction: Default::default(),
+            tm_c: Some(55.25),
+        }
+    }
+
+    #[test]
+    fn primer_pair_save_is_one_atomic_undoable_edit() {
+        let mut model = Model::new();
+        let tab = &mut model.tabs[0];
+        let before = tab.editor.document.clone();
+        let edits = [
+            primer_edit("forward", vec![Segment { start: 0, end: 20 }]),
+            primer_edit("reverse", vec![Segment { start: 20, end: 40 }]),
+        ];
+        let ids = tab.save_primers(&edits).unwrap();
+        assert_eq!(ids.len(), 2);
+        assert_ne!(ids[0], ids[1]);
+        let feature = tab
+            .editor
+            .document
+            .features
+            .iter()
+            .find(|f| f.id == ids[0])
+            .unwrap();
+        assert_eq!(
+            feature.qualifier("calculated_melting_temperature"),
+            Some("55.250000")
+        );
+        let reaction: popgene_core::primer::Reaction =
+            serde_json::from_str(feature.qualifier("primer_reaction").unwrap()).unwrap();
+        assert_eq!(reaction, Default::default());
+        tab.undo();
+        assert_eq!(tab.editor.document, before);
+        let invalid = [
+            primer_edit("valid", vec![]),
+            primer_edit("invalid", vec![Segment { start: 0, end: 21 }]),
+        ];
+        assert!(tab.save_primers(&invalid).is_err());
+        assert_eq!(tab.editor.document, before);
+    }
+
+    #[test]
+    fn unbound_oligo_survives_template_edit_and_can_be_bound_later() {
+        let mut model = Model::new();
+        let tab = &mut model.tabs[0];
+        let ids = tab.save_primers(&[primer_edit("Unbound", vec![])]).unwrap();
+        assert!(tab.apply(|d| d.replace(0, 1, "A")));
+        let feature = tab
+            .editor
+            .document
+            .features
+            .iter()
+            .find(|f| f.id == ids[0])
+            .unwrap();
+        assert!(feature.parts.is_empty());
+        assert_eq!(feature.location_label(), "Unbound oligo");
+        let mut bound = primer_edit("Bound", vec![Segment { start: 1, end: 21 }]);
+        bound.feature_id = Some(ids[0]);
+        tab.save_primers(&[bound]).unwrap();
+        assert_eq!(
+            tab.editor
+                .document
+                .features
+                .iter()
+                .filter(|f| f.id == ids[0])
+                .count(),
+            1
+        );
+        assert_eq!(
+            tab.editor
+                .document
+                .features
+                .iter()
+                .find(|f| f.id == ids[0])
+                .unwrap()
+                .parts,
+            vec![Segment { start: 1, end: 21 }]
+        );
+    }
+
+    #[test]
+    fn multi_record_open_preserves_siblings_and_requires_independent_save() {
+        let mut model = Model::new();
+        let docs = formats::import_records("two.fa", b">first\nACGT\n>second\nTTAA\n").unwrap();
+        let path = std::env::temp_dir().join("popgene-two-records.fa");
+        assert!(model.add_records(docs, path.clone(), None));
+        assert_eq!(model.tabs.len(), 3);
+        assert_eq!(model.active, 1);
+        for tab in &model.tabs[1..] {
+            assert_eq!(tab.source_path.as_ref(), Some(&resolved(&path)));
+            assert!(tab.path.is_none());
+            assert!(tab.save_format.is_none());
+        }
+        model.tabs[1].apply(|d| d.replace(0, 1, "T"));
+        assert_eq!(&*model.tabs[2].editor.document.sequence, "TTAA");
+        let docs = formats::import_records("two.fa", b">first\nACGT\n>second\nTTAA\n").unwrap();
+        assert!(model.add_records(docs, path, None));
+        assert_eq!(model.tabs.len(), 3);
+    }
+
+    #[test]
+    fn over_capacity_multi_record_import_has_no_partial_tabs() {
+        let mut model = Model::new();
+        let before = model.tabs[0].editor.document.clone();
+        let docs = (0..MAX_TABS)
+            .map(|i| Document::new(format!("record-{i}"), "ACGT").unwrap())
+            .collect();
+        assert!(!model.add_records(docs, PathBuf::from("many.fa"), None));
+        assert_eq!(model.tabs.len(), 1);
+        assert_eq!(model.tabs[0].editor.document, before);
+        assert!(
+            model
+                .issues
+                .last()
+                .unwrap()
+                .contains("No records were opened")
+        );
+    }
 
     #[test]
     fn restriction_filters_keep_recognition_counts_distinct_from_lengths() {
@@ -1140,6 +2159,67 @@ mod tests {
         assert!(EnzymeFilter::Unique.includes(1, 4));
         assert!(EnzymeFilter::OneOrTwo.includes(2, 4));
         assert!(!EnzymeFilter::All.includes(0, 6));
+    }
+
+    #[test]
+    fn custom_enzyme_names_require_canonical_catalogue_entries() {
+        assert_eq!(
+            parse_enzyme_names("EcoRI, BamHI\nEcoRI; BamHI").unwrap(),
+            BTreeSet::from(["BamHI".into(), "EcoRI".into()])
+        );
+        assert!(parse_enzyme_names(" ; ,\n").unwrap().is_empty());
+        let error = parse_enzyme_names("ecori, ImaginaryI").unwrap_err();
+        assert!(error.contains("ecori") && error.contains("ImaginaryI"));
+        assert!(error.contains("including case"));
+        assert!(parse_enzyme_names(&"x".repeat(65537)).is_err());
+        // A rejected replacement must not discard the previous valid selection.
+        let mut tab = Tab::from_document(1, Document::new("list", "GAATTC").unwrap());
+        let selected = Some(parse_enzyme_names("EcoRI").unwrap());
+        tab.set_enzyme_selection(selected.clone()).unwrap();
+        assert!(
+            tab.set_enzyme_selection(Some(BTreeSet::from(["ecori".into()])))
+                .is_err()
+        );
+        assert_eq!(tab.custom_enzyme_names, selected);
+        assert!(!tab.dirty());
+    }
+
+    #[test]
+    fn custom_enzyme_selection_intersects_count_filters_and_survives_edits() {
+        let mut tab = Tab::from_document(1, Document::new("cuts", "GAATTCGGATCCGAATTC").unwrap());
+        tab.set_enzyme_selection(Some(parse_enzyme_names("EcoRI BamHI").unwrap()))
+            .unwrap();
+        tab.restriction = Some(Arc::new(restriction::find_sites(
+            &tab.editor.document.sequence,
+            false,
+        )));
+        let names = |tab: &Tab| {
+            tab.displayed_enzyme_indices()
+                .into_iter()
+                .map(|i| ENZYMES[i].name)
+                .collect::<BTreeSet<_>>()
+        };
+        assert_eq!(names(&tab), BTreeSet::from(["BamHI"]));
+        tab.enzyme_filter = EnzymeFilter::All;
+        assert_eq!(names(&tab), BTreeSet::from(["BamHI", "EcoRI"]));
+        assert_eq!(tab.displayed_sites().len(), 3);
+        assert!(!tab.dirty());
+        assert!(tab.apply(|doc| doc.replace(0, 6, "AAAAAA")));
+        assert_eq!(tab.custom_enzyme_names.as_ref().unwrap().len(), 2);
+        assert!(tab.restriction.is_none());
+        tab.restriction = Some(Arc::new(restriction::find_sites(
+            &tab.editor.document.sequence,
+            false,
+        )));
+        tab.enzyme_filter = EnzymeFilter::UniqueSix;
+        assert_eq!(names(&tab), BTreeSet::from(["BamHI", "EcoRI"]));
+        assert_eq!(tab.displayed_sites().len(), 2);
+        tab.set_enzyme_selection(Some(BTreeSet::new())).unwrap();
+        assert!(tab.displayed_enzyme_indices().is_empty());
+        assert!(tab.displayed_sites().is_empty());
+        assert_eq!(tab.enzyme_selection_label(), "Custom list: no enzymes");
+        tab.set_enzyme_selection(None).unwrap();
+        assert!(tab.displayed_enzyme_indices().len() > 2);
     }
 
     #[test]
@@ -1341,7 +2421,7 @@ mod tests {
             let _ = std::fs::remove_dir_all(&self.0);
         }
     }
-    fn settle(model: &mut Model) {
+    pub(crate) fn settle(model: &mut Model) {
         let deadline = Instant::now() + Duration::from_secs(10);
         while model.is_busy() {
             model.poll();

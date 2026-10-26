@@ -1,0 +1,12 @@
+LOCUS       Circular_ORF                150 bp    DNA     circular SYN 25-OCT-2026
+DEFINITION  Original synthetic data: 33-aa ORF from base121 through base72 across origin.
+ACCESSION   POPGENE_TRANSLATION
+KEYWORDS    synthetic; translation.
+SOURCE      synthetic sequence
+  ORGANISM  synthetic sequence
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 aaaaaaaaaa aaaaaaaaaa aaaaaaaaaa aaaaaaaaaa aaaaaaaaaa aaaaaaaaaa
+       61 aaaaaaaaat aacccccccc cccccccccc cccccccccc cccccccccc cccccccccc
+      121 atgaaaaaaa aaaaaaaaaa aaaaaaaaaa
+//

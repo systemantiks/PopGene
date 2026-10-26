@@ -1,6 +1,6 @@
 //! Single-record EMBL/ENA nucleotide flat files using the shared INSDC feature table.
 //! See https://ena-docs.readthedocs.io/en/latest/submit/fileprep/flat-file-example.html
-use super::{Error, Result, genbank, genbank_bytes, save::safe_name};
+use super::{Error, Result, genbank, save::safe_name};
 use popgene_core::{Document, Molecule};
 
 fn bad(message: &str) -> Error {
@@ -122,6 +122,11 @@ pub(super) fn read(text: &str) -> Result<Document> {
                 comments.push(value.to_owned());
             }
             in_comment = true;
+        } else if line
+            .get(..2)
+            .is_some_and(|key| matches!(key, "RN" | "RA" | "RG" | "RT" | "RL" | "RP" | "RC" | "RX"))
+        {
+            // Parsed into structured references after the shared feature parser.
         } else if let Some(value) = line.strip_prefix("FT") {
             if line.len() < 5 || !line.is_char_boundary(2) {
                 return Err(bad("Malformed feature table line."));
@@ -154,15 +159,16 @@ pub(super) fn read(text: &str) -> Result<Document> {
     header.push_str(&sequence);
     header.push_str("\n//\n");
     let mut doc = genbank(header.as_bytes())?;
+    doc.references = super::references::read_embl(text);
     doc.warnings.clear();
-    doc.warnings.push("EMBL: exact feature ranges, strand, topology, qualifiers and common header fields are imported. Fuzzy, remote and between-base locations are rejected. Original bytes are retained.".into());
+    doc.warnings.push("EMBL: feature location expressions, strand, topology, qualifiers and common header fields are imported. Fuzzy boundaries and remote/compound semantics are retained; unresolved locations are not treated as exact local sequence. Original bytes are retained.".into());
     if omitted {
-        doc.warnings.push("Additional EMBL header fields and references are retained only in the original bytes; they are omitted when an edited record is saved.".into());
+        doc.warnings.push("Additional EMBL header fields are retained from the original record on same-format saves.".into());
     }
     Ok(doc)
 }
 
-fn field(output: &mut String, key: &str, value: &str) {
+pub(super) fn field(output: &mut String, key: &str, value: &str) {
     let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut width = 5;
     output.push_str(key);
@@ -185,11 +191,19 @@ fn field(output: &mut String, key: &str, value: &str) {
 }
 
 pub(super) fn write(doc: &Document) -> Result<Vec<u8>> {
+    super::lineage::write(doc, super::SaveFormat::Embl, write_physical)
+}
+
+pub(super) fn write_physical(doc: &Document) -> Result<Vec<u8>> {
+    super::duplex::write(doc, super::SaveFormat::Embl, write_plain)
+}
+
+pub(super) fn write_plain(doc: &Document) -> Result<Vec<u8>> {
     if doc.molecule == Molecule::Protein || doc.placeholder {
         return Err(bad("Only nonempty nucleotide sequences can be written."));
     }
-    let gb =
-        String::from_utf8(genbank_bytes(doc)?).map_err(|_| bad("Invalid sequence encoding."))?;
+    let gb = String::from_utf8(super::genbank_bytes_plain(doc)?)
+        .map_err(|_| bad("Invalid sequence encoding."))?;
     let molecule = match (doc.molecule, doc.single_stranded) {
         (Molecule::Dna, true) => "ss-DNA",
         (Molecule::Dna, false) => "DNA",
@@ -212,6 +226,36 @@ pub(super) fn write(doc: &Document) -> Result<Vec<u8>> {
     }
     field(&mut output, "DE", &doc.description);
     output.push_str("XX\n");
+    super::references::write_embl(&mut output, &doc.references);
+    if let Some(source) = &doc.source
+        && source.format == "EMBL"
+        && let Ok(text) = std::str::from_utf8(&source.bytes)
+    {
+        for line in text.lines().take_while(|line| {
+            !line.starts_with("FH") && !line.starts_with("FT") && !line.starts_with("SQ")
+        }) {
+            if let Some(key) = line.get(..2)
+                && !matches!(
+                    key,
+                    "ID" | "DE"
+                        | "AC"
+                        | "CC"
+                        | "RN"
+                        | "RA"
+                        | "RG"
+                        | "RT"
+                        | "RL"
+                        | "RP"
+                        | "RC"
+                        | "RX"
+                        | "XX"
+                )
+            {
+                output.push_str(line);
+                output.push('\n');
+            }
+        }
+    }
     for comment in &doc.comments {
         field(&mut output, "CC", comment);
         output.push_str("XX\n");

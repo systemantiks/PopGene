@@ -9,7 +9,13 @@
       "path": "Cargo.toml",
       "url": "https://raw.githubusercontent.com/SSheldon/malloc_buf/a7811e5f4c6f9685dd57ad9bfe34e9bf6b0ba4f9/Cargo.toml",
       "sha256": "1c70c91688d9850272e43cee9b189ffe3fe667151d7caf576a36a720f8b28194"
+    },
+    {
+      "path": "LICENSE.later-upstream",
+      "url": "https://raw.githubusercontent.com/SSheldon/malloc_buf/d9a3e539642bd90e07df458d226b19cdfa606863/LICENSE",
+      "sha256": "aced7b57e474a63edb5a724954222bf7659c01ceef0e648a03af799582991db7"
     }
   ],
-  "provenance_gap": "The published release tree contains a licence declaration but no full upstream licence notice. This supplement preserves the original declaration; it is not a reconstructed licence notice."
+  "provenance_gap": "The published release revision a7811e5f4c6f9685dd57ad9bfe34e9bf6b0ba4f9 has no full licence notice. Original MIT declaration and attribution remain. The later official MIT notice from d9a3e539642bd90e07df458d226b19cdfa606863 is retained without alteration; its applicability to the older published package remains a distribution-review item.",
+  "notice_revision": "d9a3e539642bd90e07df458d226b19cdfa606863"
 }

@@ -1,0 +1,12 @@
+LOCUS       CDS_flanks                   21 bp    DNA     linear   SYN 25-OCT-2026
+DEFINITION  Original synthetic data: CDS MK*; upstream P* and downstream G* (outward).
+ACCESSION   POPGENE_TRANSLATION
+KEYWORDS    synthetic; translation.
+SOURCE      synthetic sequence
+  ORGANISM  synthetic sequence
+FEATURES             Location/Qualifiers
+     CDS             7..15
+                     /label="Select_for_flanks"
+ORIGIN
+        1 taacccatga aataagggta a
+//

@@ -1,0 +1,31 @@
+{
+  "repository": "https://github.com/cbreeden/fxhash",
+  "revision": "537570af68de22d2f4bbdd5bee5d6e07268e6f42",
+  "packages": [
+    "fxhash-0.2.1"
+  ],
+  "source_verification": {
+    "path": "lib.rs",
+    "sha256": "885b72a1c977dc1c3ff4e0652719e62b6d8c3e713403e571afd581283f72df7b",
+    "exact_published_source_match": true,
+    "current_tree_checked": "a03cbf42dde010250adef75908f109be197d982b"
+  },
+  "files": [
+    {
+      "path": "COPYRIGHT-source-header.txt",
+      "sha256": "5d392ff1ac69a18c9beb41720ecbfd56f7792a1ec4321428e73757d4283f5a61",
+      "origin": "Verbatim published crate lib.rs first copyright/licence header"
+    },
+    {
+      "path": "Cargo.toml.orig",
+      "sha256": "42f07fb23f8b37acf45914ccb71df077455a353850e148afeabb5c684f8ebaab",
+      "origin": "Verbatim published crate Cargo.toml.orig"
+    },
+    {
+      "path": "README.md",
+      "sha256": "7b9227f966b312e221bd372fef79438b2446a21241eb7542520eac29bfbc10d0",
+      "origin": "Verbatim published crate README.md"
+    }
+  ],
+  "provenance_gap": "The release source matching the published 0.2.1 crate and the current official repository contain no full licence notice. The exact original Rust Project copyright/licence header and published manifest declaration are retained, not replaced with an invented licence notice."
+}

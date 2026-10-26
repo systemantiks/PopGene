@@ -1,5 +1,6 @@
 """Packaging regression checks for staged dependency notice replacement."""
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -22,6 +23,12 @@ class CollectorTests(unittest.TestCase):
         vendor = self.root / 'vendor-notices'
         (vendor / 'biopython-reference').mkdir(parents=True)
         (vendor / 'biopython-reference/LICENSE.rst').write_text('reference licence')
+        for relative in ['crates/popgene-core/vendor/primer3', 'vendor-notices/sgffp-reference',
+                         'vendor-notices/autosnapgene-reference',
+                         'vendor-notices/staden-io-lib', 'vendor-notices/figure-fonts']:
+            component = self.root / relative
+            component.mkdir(parents=True)
+            (component / 'LICENSE.txt').write_text('local component licence')
         (vendor / 'manifest.json').write_text('{}')
         (self.root / 'THIRD_PARTY.md').write_text('Reviewed notices')
         (self.root / 'Cargo.lock').write_text('lock')
@@ -78,6 +85,23 @@ class CollectorTests(unittest.TestCase):
             with self.assertRaisesRegex(OSError, 'simulated'):
                 collector.replace_directory(staged, self.destination)
         self.assertEqual((self.destination / 'stale-egui-notice').read_text(), 'previous')
+
+    def test_embedded_font_licenses_and_checked_assets_are_included(self):
+        with patch.object(collector, 'ROOT', self.original_root):
+            stage = self.root / 'real-notices'
+            stage.mkdir()
+            components = collector.collect_local_components(stage)
+        fonts = next(item for item in components if item['name'] == 'figure-fonts')
+        self.assertEqual(fonts['source'], 'vendor-notices/figure-fonts')
+        provenance = json.loads((stage / 'figure-fonts/SOURCE.json').read_text())
+        self.assertEqual(len(provenance['files']), 2)
+        for entry in provenance['files']:
+            data = (self.original_root / entry['asset']).read_bytes()
+            self.assertEqual(hashlib.sha256(data).hexdigest(), entry['sha256'])
+            license_data = (stage / 'figure-fonts' / entry['license_path']).read_bytes()
+            self.assertEqual(hashlib.sha256(license_data).hexdigest(), entry['license_sha256'])
+            self.assertIn(b'SIL OPEN FONT LICENSE Version 1.1', license_data)
+            self.assertEqual(fonts['sha256'][entry['license_path']], entry['license_sha256'])
 
 
 if __name__ == '__main__':

@@ -13,10 +13,14 @@ popgene-core = { path = "../popgene-core" }
 popgene-formats = { path = "../popgene-formats" }
 gpui-kit = "=0.8.0"
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "async-std"] }
+serde.workspace = true
+serde_json.workspace = true
+rusqlite = { version = "0.37", features = ["bundled"] }
+sha2 = "0.10"
+svg2pdf = "=0.13.0"
+resvg = "=0.45.1"
+crc32fast = "=1.5.3"
+pdf-writer = "=0.12.1"
 
 [build-dependencies]
 cc = "1"
-
-[dev-dependencies]
-rusqlite = { version = "0.37", features = ["bundled"] }
-serde_json.workspace = true

@@ -15,6 +15,27 @@ pub fn source_metadata(source: &Source) -> Result<Vec<(String, String)>> {
         "SnapGene" => snapgene::source_metadata(&source.bytes),
         "GenBank" => text_headers(&source.bytes, false),
         "EMBL" => text_headers(&source.bytes, true),
+        "SCF" | "ZTR" => {
+            let document = if source.format == "SCF" {
+                crate::scf::read(&source.file_name, &source.bytes)?
+            } else {
+                crate::ztr::read(&source.file_name, &source.bytes)?
+            };
+            let mut total = 0;
+            let mut result = vec![];
+            for comment in document.comments {
+                total += comment.len();
+                if total > 1024 * 1024 || result.len() >= 10000 {
+                    result.push((
+                        "Display limit".into(),
+                        "Additional metadata remains in the retained source file.".into(),
+                    ));
+                    break;
+                }
+                result.push(("Original trace metadata".into(), comment));
+            }
+            Ok(result)
+        }
         _ => Ok(vec![]),
     }
 }

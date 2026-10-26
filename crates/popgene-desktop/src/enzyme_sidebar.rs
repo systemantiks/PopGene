@@ -94,7 +94,7 @@ fn cut_label(cut: Option<usize>, length: usize, circular: bool) -> String {
 
 fn site_details(document: &Document, enzyme: &Enzyme, site: &RestrictionSite) -> SiteDetails {
     let n = document.sequence.len();
-    let length = enzyme.recognition.len();
+    let length = site.recognition_length;
     let end = site.start.saturating_add(length);
     let recognition = if end > n && n > 0 {
         format!(
@@ -116,11 +116,23 @@ fn site_details(document: &Document, enzyme: &Enzyme, site: &RestrictionSite) ->
     SiteDetails {
         start: site.start,
         recognition,
-        cuts: format!(
-            "Forward {}; opposite {}",
-            cut_label(site.top_cut, n, document.circular),
-            cut_label(site.bottom_cut, n, document.circular)
-        ),
+        cuts: if !enzyme.cleavage_known {
+            "Cleavage positions unknown".into()
+        } else {
+            let mut cuts = format!(
+                "Forward {}; opposite {}",
+                cut_label(site.top_cut, n, document.circular),
+                cut_label(site.bottom_cut, n, document.circular)
+            );
+            if enzyme.second_cut.is_some() {
+                cuts.push_str(&format!(
+                    " · second pair: forward {}; opposite {}",
+                    cut_label(site.second_top_cut, n, document.circular),
+                    cut_label(site.second_bottom_cut, n, document.circular)
+                ));
+            }
+            cuts
+        },
         strand: if site.reverse {
             "Reverse match"
         } else {
@@ -153,10 +165,8 @@ fn complement(base: u8) -> char {
 fn palindrome(enzyme: &Enzyme) -> bool {
     enzyme
         .recognition
-        .bytes()
-        .rev()
-        .map(complement)
-        .eq(enzyme.recognition.chars())
+        .split('|')
+        .all(|motif| motif.bytes().rev().map(complement).eq(motif.chars()))
 }
 
 fn strand_diagram(sequence: &str, cut: i32, arrow: char) -> String {
@@ -171,7 +181,17 @@ fn strand_diagram(sequence: &str, cut: i32, arrow: char) -> String {
 }
 
 fn overhang(enzyme: &Enzyme) -> String {
-    let delta = enzyme.bottom_cut - enzyme.top_cut;
+    if !enzyme.cleavage_known {
+        return "Cleavage positions unknown".into();
+    }
+    let mut label = end_label(enzyme.top_cut, enzyme.bottom_cut);
+    if let Some((top, bottom)) = enzyme.second_cut {
+        label.push_str(&format!(" · second pair: {}", end_label(top, bottom)));
+    }
+    label
+}
+fn end_label(top: i32, bottom: i32) -> String {
+    let delta = bottom - top;
     match delta.cmp(&0) {
         std::cmp::Ordering::Equal => "Blunt ends".into(),
         std::cmp::Ordering::Greater => format!("{}-nt 5′ overhang", delta),
@@ -197,9 +217,9 @@ fn catalogue_indices(query: &str, ends: EndFilter) -> Vec<usize> {
             let delta = enzyme.bottom_cut - enzyme.top_cut;
             let end_matches = match ends {
                 EndFilter::All => true,
-                EndFilter::FivePrime => delta > 0,
-                EndFilter::ThreePrime => delta < 0,
-                EndFilter::Blunt => delta == 0,
+                EndFilter::FivePrime => enzyme.cleavage_known && delta > 0,
+                EndFilter::ThreePrime => enzyme.cleavage_known && delta < 0,
+                EndFilter::Blunt => enzyme.cleavage_known && delta == 0,
             };
             end_matches
                 && (enzyme.name.to_ascii_lowercase().contains(&query)
@@ -296,7 +316,36 @@ impl Render for EnzymeSidebar {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let d = &self.details;
         let e = d.enzyme;
-        let opposite = e.recognition.bytes().map(complement).collect::<String>();
+        let diagrams = e
+            .recognition
+            .split('|')
+            .flat_map(|motif| {
+                let opposite = motif.bytes().map(complement).collect::<String>();
+                if !e.cleavage_known {
+                    return vec![format!("5′ {motif} 3′"), format!("3′ {opposite} 5′")];
+                }
+                let mut lines = vec![
+                    format!("5′ {} 3′", strand_diagram(motif, e.top_cut, '↓')),
+                    format!("3′ {} 5′", strand_diagram(&opposite, e.bottom_cut, '↑')),
+                ];
+                if let Some((top, bottom)) = e.second_cut {
+                    lines.extend([
+                        format!("Second pair: 5′ {} 3′", strand_diagram(motif, top, '↓')),
+                        format!(
+                            "Second pair: 3′ {} 5′",
+                            strand_diagram(&opposite, bottom, '↑')
+                        ),
+                    ]);
+                }
+                lines
+            })
+            .map(|text| {
+                div()
+                    .font_family("monospace")
+                    .text_size(px(14.))
+                    .child(text)
+            })
+            .collect::<Vec<_>>();
         let indices = catalogue_indices(&self.search.read(cx).value(), self.ends);
         let previous = adjacent(&indices, d.enzyme_index, false);
         let next = adjacent(&indices, d.enzyme_index, true);
@@ -489,12 +538,11 @@ impl Render for EnzymeSidebar {
                 .child(Button::new("copy-enzyme-motif").small().ghost().label("Copy motif")
                     .accessibility_label("Copy enzyme recognition motif")
                     .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(e.recognition.into())))))
-            .child(label(format!("{} bp · {} recognition", e.recognition.len(), if palindrome(e) { "Palindromic" } else { "Non-palindromic" })))
+            .child(label(format!("{} bp{} · {} recognition", e.recognition_length(), if e.recognition.contains('|') { " minimum; alternative motifs" } else { "" }, if palindrome(e) { "Palindromic" } else { "Non-palindromic" })))
             .child(div().font_weight(FontWeight::SEMIBOLD).child(overhang(e)))
             .child(div().p_3().bg(rgb(PANEL)).rounded_lg().flex().flex_col().gap_2()
-                .child(div().font_family("monospace").text_size(px(14.)).child(format!("5′ {} 3′", strand_diagram(e.recognition, e.top_cut, '↓'))))
-                .child(div().font_family("monospace").text_size(px(14.)).child(format!("3′ {} 5′", strand_diagram(&opposite, e.bottom_cut, '↑'))))
-                .child(label("Arrows mark nominal strand cuts.")))
+                .children(diagrams)
+                .child(label(if e.cleavage_known { "Arrows mark nominal strand cuts." } else { "This catalogue reports recognition only; cut positions are unspecified." })))
             .when(!same.is_empty(), |el| el.child(div().flex().flex_col().gap_1()
                 .child(label("Same recognition in this catalogue"))
                 .child(div().flex().flex_wrap().gap_1().children(same))
@@ -547,7 +595,7 @@ impl Render for EnzymeSidebar {
                     ),
             );
         }
-        body = body.child(label("Recognition and nominal cleavage only. Methylation, buffers, reaction conditions and multi-site mechanisms are not modeled."));
+        body = body.child(label("Reference catalogue: Biopython 1.88 / REBASE 404 (2024), plus EcoP15I vendor data. Recognition and nominal cleavage shown here; experimental activity depends on methylation, buffer and enzyme mechanism."));
         div()
             .id("enzyme-details-sidebar")
             .size_full()
@@ -625,12 +673,9 @@ mod tests {
         };
         assert_eq!(
             names(catalogue_indices("  eCoRi  ", EndFilter::All)),
-            vec!["EcoRI"]
+            vec!["EcoRI", "EcoRII"]
         );
-        assert_eq!(
-            names(catalogue_indices("GAATTC", EndFilter::All)),
-            vec!["EcoRI"]
-        );
+        assert!(names(catalogue_indices("GAATTC", EndFilter::All)).contains(&"EcoRI"));
         assert_eq!(
             names(catalogue_indices("kpn", EndFilter::ThreePrime)),
             vec!["KpnI"]
@@ -649,7 +694,10 @@ mod tests {
         .into_iter()
         .map(|f| catalogue_indices("", f).len())
         .sum::<usize>();
-        assert_eq!(filtered_count, all.len());
+        assert_eq!(
+            filtered_count,
+            ENZYMES.iter().filter(|e| e.cleavage_known).count()
+        );
     }
     #[test]
     fn catalogue_navigation_respects_filters_and_boundaries() {

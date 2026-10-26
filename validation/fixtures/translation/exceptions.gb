@@ -1,0 +1,17 @@
+LOCUS       ExceptionExamples            17 bp    DNA     linear   SYN 25-OCT-2026
+DEFINITION  Original synthetic data: MUO* and M* with partial stop completion.
+ACCESSION   POPGENE_TRANSLATION
+KEYWORDS    synthetic; translation.
+SOURCE      synthetic sequence
+  ORGANISM  synthetic sequence
+FEATURES             Location/Qualifiers
+     CDS             1..12
+                     /label="Sec_and_Pyl"
+                     /transl_except=(pos:4..6,aa:Sec)
+                     /transl_except=(pos:7..9,aa:Pyl)
+     CDS             13..17
+                     /label="Completed_stop"
+                     /transl_except=(pos:16..17,aa:TERM)
+ORIGIN
+        1 atgtgatagt aaatgta
+//

@@ -17,7 +17,7 @@ from Bio import SeqIO
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "validation/fixtures/regression"
-SUPPORTED_POPGENE_TABLES = {1, 2, 11}
+SUPPORTED_POPGENE_TABLES = {1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33}
 SOURCES = [
     "https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi",
     "https://www.ebi.ac.uk/ena/WebFeat/CDS_s.html",
@@ -42,7 +42,7 @@ EXPECTED = {
         },
         "rust_fixture_test": (
             "crates/popgene-desktop/src/sequence_layout.rs::tests::"
-            "uncached_genbank_cds_calculates_both_strands_and_reports_unsupported_code"
+            "uncached_genbank_cds_calculates_both_strands_and_additional_code"
         ),
     },
     "reading-frames.gb": {

@@ -1,0 +1,28 @@
+{
+  "upstream": "https://github.com/libnano/primer3-py/tree/v2.3.1/primer3/src/libprimer3",
+  "base": "Primer3 2.6.1, modifications shipped with primer3-py 2.3.1",
+  "licence": "GPL-2.0-or-later as specified by individual source headers; klib headers carry their MIT notices",
+  "scope": "Source and licence files only. No upstream executables copied. PopGene ABI wrapper is separate.",
+  "sha256": {
+    "libprimer3.c": "f99222e01a2439bd777163180be5d5f37b6d7ae72ddb2060527ed3b097141f45",
+    "libprimer3.h": "42cd5dc54c18936c60f394323bb67552909f88d2fd858ca7a0780963b419295d",
+    "p3_seq_lib.c": "725d398d4714b9c998d78a46ad697ef2d56c16fed7549cd2167b7c215fd4e06a",
+    "p3_seq_lib.h": "dfd6ce92f5c6b0f93568fe6d3ad645f0ecb7ed726427e4da2e3a1915d03262ff",
+    "dpal.c": "db412d9894650a29096c0bb6630298e84fdbd84086d7ad954d75a58948f28aaf",
+    "dpal.h": "b0017b5abc73874074ceaea3609518c6dfdc839d0a265d5aee6b6c0016ede347",
+    "thal.c": "03e7fe5b39abcf5d78b59e69858154a87876eff584b58db08e2ad500c6c27842",
+    "thal.h": "c0f336509bf4215c6e4d061dcb5f274995d00cc9ee59f3d73d682614386b8065",
+    "thal_parameters.c": "288c776f1db5f0298e31e9ef0dd871f72177cc1a3296586390c87c36eea2e303",
+    "thal_parameters.h": "9354380ecc3286d32689dbc874829a5cf586a82c3b2468687d13d8b3b438f86a",
+    "oligotm.c": "9750252bd75b6f65418845cd9c3f8d7d01348ab9cb061950ebc0e63bc71a836e",
+    "oligotm.h": "d12d70f0bc79c30d33a224f11b6da4035192b7573dc4d36a4a0e32b9bf1d94a8",
+    "masker.c": "05549e37957a9f4f619d7761713931413615f9bbf40b68443588665ebd93459b",
+    "masker.h": "5a166ccfe1690ab9cb1296815f3842360d1d77a22dbcb4a0eadb05ee6c63b10a",
+    "amplicontm.c": "75fee6a05c4d6d54c0802c239c54ce2f7bb541ca0e5a2a175283d1e148a81f9f",
+    "amplicontm.h": "ae208a928b424aaf85326a3097e1c07833000f61f9662ddc4738e8b41581542d",
+    "LICENSE.txt": "ab15fd526bd8dd18a9e77ebc139656bf4d33e97fc7238cd11bf60e2b9b8666c6",
+    "gpl-2.0.txt": "ab15fd526bd8dd18a9e77ebc139656bf4d33e97fc7238cd11bf60e2b9b8666c6",
+    "ABOUT.txt": "d69bcc8fd357c2951c09d115a634b9e90353bdc82b8f10d794d4f4178883c997",
+    "klib/khash.h": "41e778a9b0d79addccb83263667533ff2af81a8836da7edc6160dfade150968a"
+  }
+}

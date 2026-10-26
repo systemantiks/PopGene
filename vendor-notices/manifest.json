@@ -19,6 +19,7 @@
   "egui_glow-0.37.0": "emilk_egui-7c0b40402271",
   "emath-0.37.0": "emilk_egui-7c0b40402271",
   "epaint-0.37.0": "emilk_egui-7c0b40402271",
+  "fxhash-0.2.1": "cbreeden_fxhash-537570af68de",
   "gpui-kit-0.8.0": "longbridge_gpui-kit-1676826d9d49",
   "gpui-kit-assets-0.8.0": "longbridge_gpui-kit-1676826d9d49",
   "lyon-1.0.19": "nical_lyon-56219c95c658",
@@ -28,6 +29,7 @@
   "lyon_tessellation-1.0.23": "nical_lyon-db98d26a1a90",
   "mac-0.1.1": "reem_rust-mac-66afc663b68a",
   "malloc_buf-0.0.6": "SSheldon_malloc_buf-a7811e5f4c6f",
+  "newtype_derive-0.1.6": "DanielKeep_rust-custom-derive-d7eb4732f396",
   "objc-sys-0.3.5": "madsmtm_objc2-4fc083f1c6d6",
   "objc2-0.5.3": "madsmtm_objc2-5237cbf081d0",
   "objc2-0.6.5": "madsmtm_objc2-d7d2fa23ceaa",
@@ -65,5 +67,7 @@
   "spirv-0.4.0+sdk-1.4.341.0": "gfx-rs_rspirv-8afc3d0ac8e1",
   "svg_fmt-0.4.5": "nical_rust_debug-93f414cd572b",
   "taffy-0.13.0": "DioxusLabs_taffy-45a56299d366",
-  "zune-inflate-0.2.54": "etemesi254_zune-image-69502ce83fdf"
+  "zune-core-0.4.12": "etemesi254_zune-image-f8fbb123d5ed",
+  "zune-inflate-0.2.54": "etemesi254_zune-image-69502ce83fdf",
+  "zune-jpeg-0.4.21": "etemesi254_zune-image-fa2c767a01d7"
 }

@@ -2,16 +2,28 @@
 extern crate gpui_kit as gpui;
 use gpui_kit::component::{Theme, ThemeMode, TitleBar, input};
 use gpui_kit::*;
+mod alignment_tools;
 mod app;
+mod cloning_tools;
+mod digest_tools;
+mod duplex_view;
+mod enzyme_selection;
 mod enzyme_sidebar;
 mod feature_card;
+mod figure;
+mod figure_tools;
 mod forms;
 mod gene_map;
+mod metadata_tools;
 mod model;
 mod open_dialog;
+mod primer_tools;
 mod protein_properties;
+mod sequence_figure;
 mod sequence_layout;
 mod sequence_view;
+mod session;
+mod trace_tools;
 mod updater;
 use app::*;
 

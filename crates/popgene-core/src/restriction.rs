@@ -1,9 +1,12 @@
-//! Offline recognition-site analysis for a small, public, reviewed enzyme catalogue.
+//! Offline recognition-site analysis for a versioned, licensed enzyme catalogue.
 //!
 //! Coordinates are zero-based boundaries on the document's forward strand. Recognition
-//! is not a prediction of digestion efficiency: methylation, reaction conditions,
-//! flanking-base requirements and multi-site enzyme mechanisms are not modeled.
-//! See `docs/restriction-analysis.md` for catalogue provenance and validation.
+//! is not a prediction of digestion efficiency. The digest module adds explicit
+//! methylation/condition assessment and geometric complete-digest products.
+//! Catalogue provenance: Biopython1.88 / REBASE404 (2024), plus vendor EcoP15I.
+
+mod digest;
+pub use digest::*;
 
 /// Cuts are signed boundary offsets from the start of the written 5′→3′ motif.
 /// For example, EcoRI has offsets 1/5; SapI GCTCTTC(1/4) has offsets 8/11.
@@ -13,88 +16,38 @@ pub struct Enzyme {
     pub recognition: &'static str,
     pub top_cut: i32,
     pub bottom_cut: i32,
+    /// Unknown offsets use zero storage placeholders; callers must check this.
+    pub cleavage_known: bool,
+    /// Additional pair of cuts for enzymes that excise their recognition site.
+    pub second_cut: Option<(i32, i32)>,
+    pub rebase_id: Option<u32>,
+    /// Reference catalogue value, not a guarantee for a particular supplier/buffer.
+    pub catalogue_temperature_c: i16,
 }
-macro_rules! enzyme {
-    ($name:literal, $site:literal, $top:literal, $bottom:literal) => {
-        Enzyme {
-            name: $name,
-            recognition: $site,
-            top_cut: $top,
-            bottom_cut: $bottom,
-        }
-    };
+impl Enzyme {
+    /// Shortest recognition alternative, for catalogue length filters. Individual
+    /// matches carry their actual length in `RestrictionSite::recognition_length`.
+    pub fn recognition_length(&self) -> usize {
+        self.recognition.split('|').map(str::len).min().unwrap_or(0)
+    }
 }
-/// Factual subset checked against NEB and Thermo Fisher's public recognition tables.
-/// This is deliberately not a complete commercial restriction-enzyme database.
-pub const ENZYMES: &[Enzyme] = &[
-    enzyme!("Acc65I", "GGTACC", 1, 5),
-    enzyme!("AcuI", "CTGAAG", 22, 20),
-    enzyme!("AflII", "CTTAAG", 1, 5),
-    enzyme!("AleI", "CACNNNNGTG", 5, 5),
-    enzyme!("AluI", "AGCT", 2, 2),
-    enzyme!("ApaI", "GGGCCC", 5, 1),
-    enzyme!("AvrII", "CCTAGG", 1, 5),
-    enzyme!("BamHI", "GGATCC", 1, 5),
-    enzyme!("BbsI", "GAAGAC", 8, 12),
-    enzyme!("BmrI", "ACTGGG", 11, 10),
-    enzyme!("BsaI", "GGTCTC", 7, 11),
-    enzyme!("BsgI", "GTGCAG", 22, 20),
-    enzyme!("BsmBI", "CGTCTC", 7, 11),
-    enzyme!("BspQI", "GCTCTTC", 8, 11),
-    enzyme!("BssHII", "GCGCGC", 1, 5),
-    enzyme!("BstAPI", "GCANNNNNTGC", 7, 4),
-    enzyme!("BstEII", "GGTNACC", 1, 6),
-    enzyme!("BstZ17I", "GTATAC", 3, 3),
-    enzyme!("Bsu36I", "CCTNAGG", 2, 5),
-    enzyme!("DpnII", "GATC", 0, 4),
-    enzyme!("DraI", "TTTAAA", 3, 3),
-    enzyme!("EagI", "CGGCCG", 1, 5),
-    enzyme!("EcoP15I", "CAGCAG", 31, 33),
-    enzyme!("EcoRI", "GAATTC", 1, 5),
-    enzyme!("EcoRV", "GATATC", 3, 3),
-    enzyme!("FspAI", "RTGCGCAY", 4, 4),
-    enzyme!("HaeIII", "GGCC", 2, 2),
-    enzyme!("HindIII", "AAGCTT", 1, 5),
-    enzyme!("HpaII", "CCGG", 1, 3),
-    enzyme!("KpnI", "GGTACC", 5, 1),
-    enzyme!("MspI", "CCGG", 1, 3),
-    enzyme!("NaeI", "GCCGGC", 3, 3),
-    enzyme!("NgoMIV", "GCCGGC", 1, 5),
-    enzyme!("NheI", "GCTAGC", 1, 5),
-    enzyme!("NmeAIII", "GCCGAG", 27, 25),
-    enzyme!("NotI", "GCGGCCGC", 2, 6),
-    enzyme!("PacI", "TTAATTAA", 5, 3),
-    enzyme!("PaeR7I", "CTCGAG", 1, 5),
-    enzyme!("PaqCI", "CACCTGC", 11, 15),
-    enzyme!("PciI", "ACATGT", 1, 5),
-    enzyme!("PfoI", "TCCNGGA", 1, 6),
-    enzyme!("PmlI", "CACGTG", 3, 3),
-    enzyme!("PshAI", "GACNNNNGTC", 5, 5),
-    enzyme!("PspOMI", "GGGCCC", 1, 5),
-    enzyme!("PstI", "CTGCAG", 5, 1),
-    enzyme!("RsrII", "CGGWCCG", 2, 5),
-    enzyme!("SalI", "GTCGAC", 1, 5),
-    enzyme!("SapI", "GCTCTTC", 8, 11),
-    enzyme!("SmaI", "CCCGGG", 3, 3),
-    enzyme!("SphI", "GCATGC", 5, 1),
-    enzyme!("SspI", "AATATT", 3, 3),
-    enzyme!("TaqI", "TCGA", 1, 3),
-    enzyme!("TaqII", "GACCGA", 17, 15),
-    enzyme!("XbaI", "TCTAGA", 1, 5),
-    enzyme!("XcmI", "CCANNNNNNNNNTGG", 8, 7),
-    enzyme!("XhoI", "CTCGAG", 1, 5),
-];
+// All entries in the pinned Biopython1.88 / REBASE404 snapshot plus EcoP15I.
+// Original catalogue indices remain stable. Unknown cuts are explicitly marked.
+include!("restriction_catalogue.rs");
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RestrictionSite {
     pub enzyme_index: usize,
     /// Leftmost motif position in forward document coordinates, including reverse sites.
     pub start: usize,
+    pub recognition_length: usize,
     pub reverse: bool,
     /// Cleavage boundary on the forward document strand; None outside a linear molecule.
     pub top_cut: Option<usize>,
     /// Cleavage boundary on the opposite strand, in the same document coordinate system.
     pub bottom_cut: Option<usize>,
+    pub second_top_cut: Option<usize>,
+    pub second_bottom_cut: Option<usize>,
 }
 
 /// Keep output memory bounded even for repetitive chromosomes. Counts remain exact.
@@ -123,6 +76,41 @@ pub fn find_sites(sequence: &str, circular: bool) -> RestrictionAnalysis {
 pub fn find_sites_cancellable(
     sequence: &str,
     circular: bool,
+    should_cancel: impl FnMut() -> bool,
+) -> Option<RestrictionAnalysis> {
+    analyze_selected(
+        sequence,
+        circular,
+        &(0..ENZYMES.len()).collect::<Vec<_>>(),
+        MAX_SITES_PER_ENZYME,
+        should_cancel,
+    )
+}
+
+/// Analyze a selected enzyme set without scanning the rest of the catalogue.
+pub fn find_sites_for(
+    sequence: &str,
+    circular: bool,
+    enzyme_indices: &[usize],
+) -> Result<RestrictionAnalysis, String> {
+    if enzyme_indices.iter().any(|&i| i >= ENZYMES.len()) {
+        return Err("Invalid enzyme index".into());
+    }
+    Ok(analyze_selected(
+        sequence,
+        circular,
+        enzyme_indices,
+        MAX_SITES_PER_ENZYME,
+        || false,
+    )
+    .unwrap())
+}
+
+fn analyze_selected(
+    sequence: &str,
+    circular: bool,
+    enzyme_indices: &[usize],
+    site_limit: usize,
     mut should_cancel: impl FnMut() -> bool,
 ) -> Option<RestrictionAnalysis> {
     let sequence = sequence.as_bytes();
@@ -133,72 +121,105 @@ pub fn find_sites_cancellable(
         total_sites: 0,
         truncated: false,
     };
-    for (enzyme_index, enzyme) in ENZYMES.iter().enumerate() {
+    let mut groups = std::collections::BTreeMap::<&str, Vec<usize>>::new();
+    for &index in enzyme_indices {
+        let indices = groups.entry(ENZYMES[index].recognition).or_default();
+        if !indices.contains(&index) {
+            indices.push(index);
+        }
+    }
+    for (recognition, indices) in groups {
         if should_cancel() {
             return None;
         }
-        let length = enzyme.recognition.len();
-        if length > n {
-            continue;
-        }
-        // Shift-And: each bit encodes a matched prefix of the motif. The pattern
-        // masks contain all canonical alternatives for degenerate IUPAC symbols.
-        let forward = pattern_masks(enzyme.recognition.as_bytes(), false);
-        let reverse = pattern_masks(enzyme.recognition.as_bytes(), true);
-        let palindrome = forward == reverse;
-        let done = 1u64 << (length - 1);
-        let mut forward_state = 0;
-        let mut reverse_state = 0;
-        let scan_length = n + if circular { length - 1 } else { 0 };
-        for i in 0..scan_length {
-            if i & 0x3fff == 0 && should_cancel() {
-                return None;
-            }
-            let base = sequence[if i < n { i } else { i - n }];
-            let Some(base) = canonical_index(base) else {
-                forward_state = 0;
-                reverse_state = 0;
-                continue;
-            };
-            forward_state = ((forward_state << 1) | 1) & forward[base];
-            if !palindrome {
-                reverse_state = ((reverse_state << 1) | 1) & reverse[base];
-            }
-            let found_forward = forward_state & done != 0;
-            let found_reverse = !palindrome && reverse_state & done != 0;
-            if !found_forward && !found_reverse {
+        for motif in recognition.split('|') {
+            let length = motif.len();
+            if length > n {
                 continue;
             }
-            let start = i + 1 - length;
-            for is_reverse in [false, true] {
-                if (!is_reverse && !found_forward) || (is_reverse && !found_reverse) {
-                    continue;
+            // Shift-And: each bit encodes a matched prefix of the motif. The pattern
+            // masks contain all canonical alternatives for degenerate IUPAC symbols.
+            let forward = pattern_masks(motif.as_bytes(), false);
+            let reverse = pattern_masks(motif.as_bytes(), true);
+            let palindrome = forward == reverse;
+            let done = 1u64 << (length - 1);
+            let mut forward_state = 0;
+            let mut reverse_state = 0;
+            let scan_length = n + if circular { length - 1 } else { 0 };
+            for i in 0..scan_length {
+                if i & 0x3fff == 0 && should_cancel() {
+                    return None;
                 }
-                let count = &mut result.counts[enzyme_index];
-                *count += 1;
-                result.total_sites += 1;
-                if *count > MAX_SITES_PER_ENZYME {
-                    result.truncated = true;
+                let base = sequence[if i < n { i } else { i - n }];
+                let Some(base) = canonical_index(base) else {
+                    forward_state = 0;
+                    reverse_state = 0;
                     continue;
-                }
-                let (top, bottom) = if is_reverse {
-                    (
-                        length as i32 - enzyme.bottom_cut,
-                        length as i32 - enzyme.top_cut,
-                    )
-                } else {
-                    (enzyme.top_cut, enzyme.bottom_cut)
                 };
-                result.sites.push(RestrictionSite {
-                    enzyme_index,
-                    start,
-                    reverse: is_reverse,
-                    top_cut: boundary(start, top, n, circular),
-                    bottom_cut: boundary(start, bottom, n, circular),
-                });
+                forward_state = ((forward_state << 1) | 1) & forward[base];
+                if !palindrome {
+                    reverse_state = ((reverse_state << 1) | 1) & reverse[base];
+                }
+                let found_forward = forward_state & done != 0;
+                let found_reverse = !palindrome && reverse_state & done != 0;
+                if !found_forward && !found_reverse {
+                    continue;
+                }
+                let start = i + 1 - length;
+                for is_reverse in [false, true] {
+                    if (!is_reverse && !found_forward) || (is_reverse && !found_reverse) {
+                        continue;
+                    }
+                    for &enzyme_index in &indices {
+                        let enzyme = &ENZYMES[enzyme_index];
+                        let count = &mut result.counts[enzyme_index];
+                        *count += 1;
+                        result.total_sites += 1;
+                        if *count > site_limit {
+                            result.truncated = true;
+                            continue;
+                        }
+                        let (top, bottom) = if is_reverse {
+                            (
+                                length as i32 - enzyme.bottom_cut,
+                                length as i32 - enzyme.top_cut,
+                            )
+                        } else {
+                            (enzyme.top_cut, enzyme.bottom_cut)
+                        };
+                        let secondary = enzyme.second_cut.map(|(top, bottom)| {
+                            if is_reverse {
+                                (length as i32 - bottom, length as i32 - top)
+                            } else {
+                                (top, bottom)
+                            }
+                        });
+                        result.sites.push(RestrictionSite {
+                            enzyme_index,
+                            start,
+                            recognition_length: length,
+                            reverse: is_reverse,
+                            top_cut: enzyme
+                                .cleavage_known
+                                .then(|| boundary(start, top, n, circular))
+                                .flatten(),
+                            bottom_cut: enzyme
+                                .cleavage_known
+                                .then(|| boundary(start, bottom, n, circular))
+                                .flatten(),
+                            second_top_cut: secondary
+                                .and_then(|(top, _)| boundary(start, top, n, circular)),
+                            second_bottom_cut: secondary
+                                .and_then(|(_, bottom)| boundary(start, bottom, n, circular)),
+                        });
+                    }
+                }
             }
         }
     }
+    result
+        .sites
+        .sort_by_key(|site| (site.enzyme_index, site.start, site.reverse));
     Some(result)
 }
 
@@ -277,9 +298,18 @@ mod tests {
         for enzyme in ENZYMES {
             assert!(names.insert(enzyme.name));
             assert!((1..=64).contains(&enzyme.recognition.len()));
-            assert!(enzyme.recognition.bytes().all(|b| iupac_mask(b) != 0));
-            if pattern_masks(enzyme.recognition.as_bytes(), false)
-                == pattern_masks(enzyme.recognition.as_bytes(), true)
+            assert!(
+                enzyme
+                    .recognition
+                    .bytes()
+                    .all(|b| b == b'|' || iupac_mask(b) != 0)
+            );
+            if enzyme.cleavage_known
+                && enzyme.second_cut.is_none()
+                && (0..=enzyme.recognition.len() as i32).contains(&enzyme.top_cut)
+                && (0..=enzyme.recognition.len() as i32).contains(&enzyme.bottom_cut)
+                && pattern_masks(enzyme.recognition.as_bytes(), false)
+                    == pattern_masks(enzyme.recognition.as_bytes(), true)
             {
                 assert_eq!(
                     enzyme.top_cut + enzyme.bottom_cut,
@@ -387,7 +417,7 @@ mod tests {
         assert_eq!(result.counts[bam], 1);
         assert!(result.sites.iter().any(|s| s.enzyme_index == bam));
         assert!(result.truncated);
-        assert_eq!(result.total_sites, result.counts.iter().sum());
+        assert_eq!(result.total_sites, result.counts.iter().sum::<usize>());
     }
     #[test]
     fn taqii_uses_revised_specificity_and_ecop15i_has_documented_offsets() {

@@ -1,7 +1,9 @@
 //! Native GPUI vector maps. Geometry, hit testing and scientific coordinates share one scene.
+mod export;
 use crate::feature_card::{direction, feature_color, number, render_feature_card, truncate};
+pub(crate) use export::map_svg;
 use gpui_kit::{prelude::*, *};
-use popgene_core::{Document, Feature, Segment};
+use popgene_core::{Document, Feature, FeatureSegmentStyle, Segment};
 use std::{
     cell::RefCell,
     f32::consts::{FRAC_PI_2, TAU},
@@ -310,9 +312,25 @@ fn major_ticks(n: usize) -> Vec<usize> {
     ticks
 }
 fn features_overlap(a: &Feature, b: &Feature) -> bool {
-    a.parts
+    let spans = |feature: &Feature| {
+        feature
+            .parts
+            .iter()
+            .cloned()
+            .chain(feature.display_gaps().into_iter().map(|g| g.range))
+            .collect::<Vec<_>>()
+    };
+    let (a_spans, b_spans) = (spans(a), spans(b));
+    let (a_points, b_points) = (feature_boundaries(a), feature_boundaries(b));
+    a_spans
         .iter()
-        .any(|a| b.parts.iter().any(|b| a.start < b.end && b.start < a.end))
+        .any(|a| b_spans.iter().any(|b| a.start < b.end && b.start < a.end))
+        || a_points
+            .iter()
+            .any(|p| b_points.contains(p) || b_spans.iter().any(|s| s.start <= *p && *p <= s.end))
+        || b_points
+            .iter()
+            .any(|p| a_spans.iter().any(|s| s.start <= *p && *p <= s.end))
 }
 /// One stable lane for every ordered, possibly origin-spanning feature.
 fn assign_tracks(doc: &Document, indices: &[usize]) -> Vec<usize> {
@@ -336,6 +354,112 @@ fn assign_tracks(doc: &Document, indices: &[usize]) -> Vec<usize> {
         })
         .collect()
 }
+fn feature_boundaries(feature: &Feature) -> Vec<usize> {
+    let mut boundaries = feature.display_cleavage_sites();
+    if let Some(location) = &feature.location {
+        boundaries.extend(location.local_boundaries());
+    }
+    boundaries.sort_unstable();
+    boundaries.dedup();
+    boundaries
+}
+fn circular_adornments(
+    scene: &mut Scene,
+    feature: &Feature,
+    index: usize,
+    center: P,
+    r: f32,
+    n: f32,
+    color: Hsla,
+) {
+    for gap in feature.display_gaps() {
+        if gap.range.end as f32 > n {
+            continue;
+        }
+        let start = gap.range.start as f32 / n;
+        let end = gap.range.end as f32 / n;
+        let count = (((end - start) * TAU * r / 7.).ceil() as usize).clamp(1, 2000);
+        let ink = gap.color_rgb.map(|c| rgb(c).into()).unwrap_or(color);
+        for i in 0..count {
+            let a = start + (end - start) * i as f32 / count as f32;
+            let b = (a + (end - start) * 0.55 / count as f32).min(end);
+            scene.arc(center, r, a, b, 1.5, ink);
+        }
+        scene.regions.push(Region {
+            hit: Hit::Feature(FeatureHit {
+                index,
+                segment: None,
+            }),
+            shape: HitShape::Arc {
+                center,
+                radius: r,
+                start,
+                end,
+            },
+        });
+    }
+    for boundary in feature_boundaries(feature)
+        .into_iter()
+        .filter(|&p| p as f32 <= n)
+    {
+        let start = on_circle(center, r - 9., boundary as f32 / n);
+        let end = on_circle(center, r + 9., boundary as f32 / n);
+        scene.line(start, end, 2., color);
+        scene.regions.push(Region {
+            hit: Hit::Feature(FeatureHit {
+                index,
+                segment: None,
+            }),
+            shape: HitShape::Line(start, end),
+        });
+    }
+}
+fn linear_adornments(
+    scene: &mut Scene,
+    feature: &Feature,
+    index: usize,
+    axis: (f32, f32, f32, f32),
+    color: Hsla,
+) {
+    let (left, width, y, n) = axis;
+    for gap in feature.display_gaps() {
+        if gap.range.end as f32 > n {
+            continue;
+        }
+        let start = left + width * gap.range.start as f32 / n;
+        let end = left + width * gap.range.end as f32 / n;
+        let count = (((end - start) / 7.).ceil() as usize).clamp(1, 2000);
+        let ink = gap.color_rgb.map(|c| rgb(c).into()).unwrap_or(color);
+        for i in 0..count {
+            let a = start + (end - start) * i as f32 / count as f32;
+            let b = (a + (end - start) * 0.55 / count as f32).min(end);
+            scene.line(P::new(a, y), P::new(b, y), 1.5, ink);
+        }
+        scene.regions.push(Region {
+            hit: Hit::Feature(FeatureHit {
+                index,
+                segment: None,
+            }),
+            shape: HitShape::Line(P::new(start, y), P::new(end, y)),
+        });
+    }
+    for boundary in feature_boundaries(feature)
+        .into_iter()
+        .filter(|&p| p as f32 <= n)
+    {
+        let x = left + width * boundary as f32 / n;
+        let a = P::new(x, y - 9.);
+        let b = P::new(x, y + 9.);
+        scene.line(a, b, 2., color);
+        scene.regions.push(Region {
+            hit: Hit::Feature(FeatureHit {
+                index,
+                segment: None,
+            }),
+            shape: HitShape::Line(a, b),
+        });
+    }
+}
 fn feature_indices(doc: &Document, primer: bool, enabled: bool, cap: usize) -> Vec<usize> {
     if !enabled {
         return vec![];
@@ -343,17 +467,19 @@ fn feature_indices(doc: &Document, primer: bool, enabled: bool, cap: usize) -> V
     doc.features
         .iter()
         .enumerate()
-        .filter(|(_, f)| (f.kind == "primer_bind") == primer && !f.parts.is_empty())
+        .filter(|(_, f)| {
+            (f.kind == "primer_bind") == primer
+                && (!f.parts.is_empty() || !feature_boundaries(f).is_empty())
+        })
         .take(cap)
         .map(|(i, _)| i)
         .collect()
 }
 fn feature_anchor(feature: &Feature, n: f32) -> f32 {
-    let part = feature
-        .parts
-        .iter()
-        .max_by_key(|p| p.end - p.start)
-        .unwrap();
+    let part = feature.parts.iter().max_by_key(|p| p.end - p.start);
+    let Some(part) = part else {
+        return feature_boundaries(feature).first().copied().unwrap_or(0) as f32 / n;
+    };
     (part.start as f32 + (part.end - part.start) as f32 * 0.5) / n
 }
 struct FeatureMapLabel {
@@ -458,28 +584,40 @@ fn circular_arrow(
         let display_segments = feature.display_segments();
         // Ordered endpoints identify the terminal occurrence even when two
         // biological parts share the same genomic coordinates.
-        let color = if reverse {
+        let terminal = if reverse {
             display_segments.first()
         } else {
             display_segments.last()
-        }
-        .and_then(|segment| segment.color_rgb)
-        .map(|value| rgb(value).into())
-        .unwrap_or(color);
+        };
+        let color = terminal
+            .and_then(|segment| segment.color_rgb)
+            .map(|value| rgb(value).into())
+            .unwrap_or(color);
         let fraction = end as f32 / doc.sequence.len() as f32;
         let angle = fraction * TAU - FRAC_PI_2;
         let tip = on_circle(center, r, fraction);
         let sign = if reverse { -1. } else { 1. };
         let t = P::new(-angle.sin() * sign, angle.cos() * sign);
         let radial = P::new(angle.cos(), angle.sin());
-        scene.draws.push(Draw::Fill(
-            vec![
-                tip.offset(t.x * 7., t.y * 7.),
-                tip.offset(-t.x * 5. + radial.x * 7., -t.y * 5. + radial.y * 7.),
-                tip.offset(-t.x * 5. - radial.x * 7., -t.y * 5. - radial.y * 7.),
-            ],
+        let points = vec![
+            tip.offset(t.x * 7., t.y * 7.),
+            tip.offset(-t.x * 5. + radial.x * 7., -t.y * 5. + radial.y * 7.),
+            tip.offset(-t.x * 5. - radial.x * 7., -t.y * 5. - radial.y * 7.),
+        ];
+        arrow_shape(
+            scene,
+            points,
             color,
-        ));
+            terminal.is_some_and(|s| s.style == FeatureSegmentStyle::Line),
+        );
+    }
+}
+fn arrow_shape(scene: &mut Scene, mut points: Vec<P>, color: Hsla, outline: bool) {
+    if outline {
+        points.push(points[0]);
+        scene.draws.push(Draw::Stroke(points, 1.5, color));
+    } else {
+        scene.draws.push(Draw::Fill(points, color));
     }
 }
 /// Labels sit on the dark canvas, so retain their hue at a readable lightness.
@@ -730,6 +868,11 @@ fn circular_scene(rect: Rect, data: &MapData<'_>, measure: &impl Fn(&str, f32) -
     }
     let tracks = assign_tracks(doc, &features);
     let track_capacity = ((radius - 74.) / 21.).floor().max(1.) as usize;
+    let feature_radii = tracks
+        .iter()
+        .filter(|&&track| track < track_capacity)
+        .map(|&track| radius - 43. - track as f32 * 21.)
+        .collect::<Vec<_>>();
     let mut callouts = vec![];
     let mut occupied = vec![center_bounds];
     let mut drawn_features = 0;
@@ -755,7 +898,11 @@ fn circular_scene(rect: Rect, data: &MapData<'_>, measure: &impl Fn(&str, f32) -
                 r,
                 p.start as f32 / n,
                 p.end as f32 / n,
-                10.,
+                if display.style == FeatureSegmentStyle::Line {
+                    1.5
+                } else {
+                    10.
+                },
                 segment_color,
             );
             scene.regions.push(Region {
@@ -771,6 +918,7 @@ fn circular_scene(rect: Rect, data: &MapData<'_>, measure: &impl Fn(&str, f32) -
                 },
             });
         }
+        circular_adornments(&mut scene, f, index, center, r, n, color);
         circular_arrow(&mut scene, f, doc, center, r, color);
         let map_labels = feature_map_labels(f, n, color);
         expected_feature_labels += map_labels.len();
@@ -804,6 +952,18 @@ fn circular_scene(rect: Rect, data: &MapData<'_>, measure: &impl Fn(&str, f32) -
                         P::new(bounds.x + bounds.w, bounds.y + bounds.h),
                     ];
                     if corners.iter().all(|p| p.distance(center) < radius - 8.)
+                        && !feature_radii.iter().any(|&r| {
+                            let closest = P::new(
+                                center.x.clamp(bounds.x, bounds.x + bounds.w),
+                                center.y.clamp(bounds.y, bounds.y + bounds.h),
+                            )
+                            .distance(center);
+                            let farthest = corners
+                                .iter()
+                                .map(|p| p.distance(center))
+                                .fold(0., f32::max);
+                            closest <= r + 9. && farthest >= r - 9.
+                        })
                         && !occupied.iter().any(|b| rects_overlap(*b, bounds, 3.))
                     {
                         scene.text(label.clone(), at, 12., label_color(color), 0.5, measure);
@@ -842,10 +1002,7 @@ fn circular_scene(rect: Rect, data: &MapData<'_>, measure: &impl Fn(&str, f32) -
         drawn_primers += 1;
         let f = &doc.features[index];
         let r = radius + 13. + track as f32 * 10.;
-        let color = f
-            .display_color_rgb()
-            .map(|value| rgb(value).into())
-            .unwrap_or_else(|| rgb(if f.reverse { 0xd895f0 } else { 0xb985f0 }).into());
+        let color = feature_color(f, index);
         for (segment, display) in f.display_segments().iter().enumerate() {
             let p = &display.range;
             let segment_color = display
@@ -857,7 +1014,11 @@ fn circular_scene(rect: Rect, data: &MapData<'_>, measure: &impl Fn(&str, f32) -
                 r,
                 p.start as f32 / n,
                 p.end as f32 / n,
-                3.,
+                if display.style == FeatureSegmentStyle::Line {
+                    1.5
+                } else {
+                    3.
+                },
                 segment_color,
             );
             scene.regions.push(Region {
@@ -873,6 +1034,7 @@ fn circular_scene(rect: Rect, data: &MapData<'_>, measure: &impl Fn(&str, f32) -
                 },
             });
         }
+        circular_adornments(&mut scene, f, index, center, r, n, color);
         circular_arrow(&mut scene, f, doc, center, r, color);
         if options.labels {
             callouts.push(Callout {
@@ -939,6 +1101,9 @@ fn linear_arrow(
     y: f32,
     color: Hsla,
 ) {
+    if f.parts.is_empty() {
+        return;
+    }
     let dir = direction(f, doc.molecule);
     for reverse in [false, true] {
         if dir != "Bidirectional"
@@ -959,24 +1124,28 @@ fn linear_arrow(
         let display_segments = f.display_segments();
         // Ordered endpoints identify the terminal occurrence even when two
         // biological parts share the same genomic coordinates.
-        let color = if reverse {
+        let terminal = if reverse {
             display_segments.first()
         } else {
             display_segments.last()
-        }
-        .and_then(|segment| segment.color_rgb)
-        .map(|value| rgb(value).into())
-        .unwrap_or(color);
+        };
+        let color = terminal
+            .and_then(|segment| segment.color_rgb)
+            .map(|value| rgb(value).into())
+            .unwrap_or(color);
         let x = left + width * end as f32 / doc.sequence.len() as f32;
         let sign = if reverse { -1. } else { 1. };
-        scene.draws.push(Draw::Fill(
-            vec![
-                P::new(x + sign * 5., y),
-                P::new(x - sign * 5., y - 7.),
-                P::new(x - sign * 5., y + 7.),
-            ],
+        let points = vec![
+            P::new(x + sign * 5., y),
+            P::new(x - sign * 5., y - 7.),
+            P::new(x - sign * 5., y + 7.),
+        ];
+        arrow_shape(
+            scene,
+            points,
             color,
-        ));
+            terminal.is_some_and(|s| s.style == FeatureSegmentStyle::Line),
+        );
     }
 }
 fn linear_scene(rect: Rect, data: &MapData<'_>, measure: &impl Fn(&str, f32) -> f32) -> Scene {
@@ -1072,10 +1241,7 @@ fn linear_scene(rect: Rect, data: &MapData<'_>, measure: &impl Fn(&str, f32) -> 
         drawn_primers += 1;
         let f = &doc.features[index];
         let at = y + 24. + track as f32 * 38.;
-        let color = f
-            .display_color_rgb()
-            .map(|value| rgb(value).into())
-            .unwrap_or_else(|| rgb(if f.reverse { 0xd895f0 } else { 0xb985f0 }).into());
+        let color = feature_color(f, index);
         for (segment, display) in f.display_segments().iter().enumerate() {
             let p = &display.range;
             let segment_color = display
@@ -1084,7 +1250,16 @@ fn linear_scene(rect: Rect, data: &MapData<'_>, measure: &impl Fn(&str, f32) -> 
                 .unwrap_or(color);
             let a = left + width * p.start as f32 / n as f32;
             let b = left + width * p.end as f32 / n as f32;
-            scene.line(P::new(a, at), P::new(b.max(a + 2.), at), 3., segment_color);
+            scene.line(
+                P::new(a, at),
+                P::new(b.max(a + 2.), at),
+                if display.style == FeatureSegmentStyle::Line {
+                    1.5
+                } else {
+                    3.
+                },
+                segment_color,
+            );
             scene.regions.push(Region {
                 hit: Hit::Feature(FeatureHit {
                     index,
@@ -1098,6 +1273,7 @@ fn linear_scene(rect: Rect, data: &MapData<'_>, measure: &impl Fn(&str, f32) -> 
                 }),
             });
         }
+        linear_adornments(&mut scene, f, index, (left, width, at, n as f32), color);
         linear_arrow(&mut scene, f, doc, left, width, at, color);
         if options.labels {
             let text = format!("{}  {}", truncate(&f.label, 20), primer_label(f));
@@ -1153,7 +1329,16 @@ fn linear_scene(rect: Rect, data: &MapData<'_>, measure: &impl Fn(&str, f32) -> 
                 .unwrap_or(color);
             let a = left + width * p.start as f32 / n as f32;
             let b = left + width * p.end as f32 / n as f32;
-            scene.line(P::new(a, at), P::new(b.max(a + 2.), at), 10., segment_color);
+            scene.line(
+                P::new(a, at),
+                P::new(b.max(a + 2.), at),
+                if display.style == FeatureSegmentStyle::Line {
+                    1.5
+                } else {
+                    10.
+                },
+                segment_color,
+            );
             scene.regions.push(Region {
                 hit: Hit::Feature(FeatureHit {
                     index,
@@ -1167,6 +1352,7 @@ fn linear_scene(rect: Rect, data: &MapData<'_>, measure: &impl Fn(&str, f32) -> 
                 }),
             });
         }
+        linear_adornments(&mut scene, f, index, (left, width, at, n as f32), color);
         linear_arrow(&mut scene, f, doc, left, width, at, color);
         let map_labels = feature_map_labels(f, n as f32, color);
         expected_feature_labels += map_labels.len();
@@ -1349,6 +1535,16 @@ fn build_scene(rect: Rect, data: &MapData<'_>, measure: impl Fn(&str, f32) -> f3
     } else {
         linear_scene(rect, data, &measure)
     };
+    if let Some(ends) = &data.doc.duplex_ends {
+        let geometry = ends.geometry(data.doc.sequence.len());
+        if geometry.extent != data.doc.sequence.len() || !data.doc.duplex_annotations.is_empty() {
+            scene.notices.insert(
+                0,
+                "Top-strand coordinates; full duplex includes additional strand/annotation data"
+                    .into(),
+            );
+        }
+    }
     for region in scene.regions.clone() {
         let selected = !data.selected.is_empty()
             && match region.hit {
@@ -1696,7 +1892,7 @@ impl Render for GeneMap {
             .min_h(px(260.))
             .bg(rgb(0x111a27))
             .when(hovered.is_some(), |view| view.cursor_pointer())
-            .on_hover(cx.listener(|this, inside, _, cx| {
+            .on_hover(cx.listener(|this, inside: &bool, _, cx| {
                 if !inside {
                     this.clear_hover(cx);
                 }
@@ -2003,6 +2199,60 @@ mod tests {
         assert_eq!(tracks[0], tracks[3]);
     }
     #[test]
+    fn between_base_sites_and_line_styles_are_visible_and_avoid_other_tracks() {
+        let mut doc = popgene_formats::import(
+            "styles.gb",
+            include_bytes!("../../../validation/fixtures/regression/annotation-styles.gb"),
+        )
+        .unwrap();
+        doc.features[1].location = Some(popgene_core::FeatureLocation::Between {
+            left: 19,
+            right: 20,
+        });
+        assert_eq!(assign_tracks(&doc, &[0, 1]), vec![0, 1]);
+        // A point in the visual gap also occupies its own track.
+        doc.features[1].location = Some(popgene_core::FeatureLocation::Between {
+            left: 39,
+            right: 40,
+        });
+        assert_eq!(assign_tracks(&doc, &[0, 1]), vec![0, 1]);
+        doc.features[0].parts = vec![Segment { start: 10, end: 30 }];
+        doc.features[0].location = None;
+        doc.features[0].qualifiers=vec![("note".into(),Some("This forward directional feature has 1 segments: 1: 11 .. 30 / #------ / Line segment".into()))];
+        for circular in [false, true] {
+            doc.circular = circular;
+            let scene = build_scene(
+                rect(),
+                &MapData {
+                    doc: &doc,
+                    selected: &[],
+                    options: MapOptions::default(),
+                    sites: &[],
+                    hovered: None,
+                },
+                measure,
+            );
+            assert!(
+                scene
+                    .regions
+                    .iter()
+                    .any(|r| matches!(r.hit, Hit::Feature(FeatureHit { index: 1, .. })))
+            );
+            assert!(
+                scene
+                    .draws
+                    .iter()
+                    .any(|d| matches!(d,Draw::Stroke(points,w,_) if points.len()==4 && *w==1.5))
+            );
+            assert!(
+                !scene
+                    .draws
+                    .iter()
+                    .any(|d| matches!(d,Draw::Fill(points,_) if points.len()==3))
+            );
+        }
+    }
+    #[test]
     fn display_subdivisions_have_distinct_map_colors_hits_and_terminal_arrow() {
         let doc = popgene_formats::import(
             "segments.gb",
@@ -2069,6 +2319,7 @@ mod tests {
         let mut doc = popgene_core::Document::new("repeated", "ACGTAC").unwrap();
         doc.circular = true;
         doc.features.push(popgene_core::Feature {
+            location: None,
             id: 1, label: "repeated".into(), kind: "misc_feature".into(),
             parts: vec![Segment { start: 0, end: 6 }, Segment { start: 0, end: 6 }],
             reverse: false, edited: false,

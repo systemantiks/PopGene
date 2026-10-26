@@ -39,9 +39,44 @@ pub struct Creator {
     _subscriptions: Vec<Subscription>,
 }
 
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CreatorDraft {
+    kind: Option<Molecule>,
+    request: Request,
+    touched: bool,
+}
+
 impl EventEmitter<CreatorEvent> for Creator {}
 
 impl Creator {
+    pub fn snapshot(&self, cx: &App) -> CreatorDraft {
+        let mut request = self.request.clone();
+        request.name = self.name.read(cx).value().to_string();
+        request.text = self.text.read(cx).value().to_string();
+        request.count = self.count.read(cx).value().to_string();
+        CreatorDraft {
+            kind: self.kind,
+            request,
+            touched: self.touched,
+        }
+    }
+
+    pub fn restore(&mut self, draft: CreatorDraft, window: &mut Window, cx: &mut Context<Self>) {
+        self.kind = draft.kind;
+        self.name.update(cx, |s, cx| {
+            s.set_value(draft.request.name.clone(), window, cx)
+        });
+        self.text.update(cx, |s, cx| {
+            s.set_value(draft.request.text.clone(), window, cx)
+        });
+        self.count.update(cx, |s, cx| {
+            s.set_value(draft.request.count.clone(), window, cx)
+        });
+        self.request = draft.request;
+        self.touched = draft.touched;
+        cx.notify();
+    }
+
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let name = cx.new(|cx| {
             InputState::new(window, cx)
@@ -146,10 +181,11 @@ impl Creator {
         self.import_pending = true;
         cx.emit(CreatorEvent::Dialog(true));
         cx.notify();
+        let dialog = rfd::AsyncFileDialog::new().set_parent(window);
         // Launch after the input callback has returned its GPUI entity/window leases.
         // The weak entity prevents a late result from reviving a discarded creator.
         cx.spawn_in(window, async move |this, cx| {
-            let selected = rfd::AsyncFileDialog::new()
+            let selected = dialog
                 .add_filter(
                     "Sequence text",
                     &["txt", "fa", "fasta", "fna", "faa", "frna"],

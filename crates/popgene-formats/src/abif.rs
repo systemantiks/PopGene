@@ -1,6 +1,6 @@
-//! Bounded, read-only Sanger ABIF import (edited calls preferred; analysed DATA9..12).
+//! Bounded Sanger ABIF import and call editing (analysed DATA9..12).
 use super::{Error, Result};
-use popgene_core::{Document, Source, Trace};
+use popgene_core::{Document, Source, Trace, TraceCallSet};
 use std::{collections::BTreeMap, path::Path};
 fn bad(s: &str) -> Error {
     Error::Message(format!("ABIF import: {s}"))
@@ -65,6 +65,60 @@ fn directory(b: &[u8]) -> Result<BTreeMap<([u8; 4], usize), Entry<'_>>> {
     }
     Ok(entries)
 }
+fn call_set(
+    entries: &BTreeMap<([u8; 4], usize), Entry<'_>>,
+    version: usize,
+) -> Result<TraceCallSet> {
+    let get = |tag: &[u8; 4]| {
+        entries
+            .get(&(*tag, version))
+            .ok_or_else(|| bad("Call family is missing its sequence, quality or peak array"))
+    };
+    let calls = get(b"PBAS")?;
+    if calls.size != 1 {
+        return Err(bad("Unsupported call element size"));
+    }
+    let text = std::str::from_utf8(calls.bytes)
+        .map_err(|_| bad("Invalid call encoding"))?
+        .trim_end_matches('\0');
+    let sequence = popgene_core::Molecule::Dna.normalize(text)?;
+    if sequence.len() != text.len() {
+        return Err(bad("Base-call array contains whitespace"));
+    }
+    let quality = entries.get(&(*b"PCON", version));
+    let peaks = get(b"PLOC")?;
+    if quality.is_some_and(|q| q.size != 1 || q.count < sequence.len())
+        || peaks.count < sequence.len()
+        || !matches!(peaks.size, 2 | 4)
+    {
+        return Err(bad("Inconsistent call/quality/peak arrays"));
+    }
+    let peaks = peaks
+        .bytes
+        .chunks_exact(peaks.size)
+        .take(sequence.len())
+        .map(|p| {
+            if p.len() == 2 {
+                u16::from_be_bytes(p.try_into().unwrap()) as usize
+            } else {
+                u32::from_be_bytes(p.try_into().unwrap()) as usize
+            }
+        })
+        .collect();
+    Ok(TraceCallSet {
+        label: match version {
+            1 => "Edited instrument calls (PBAS1)",
+            2 => "Original basecaller calls (PBAS2)",
+            _ => "Instrument call family",
+        }
+        .into(),
+        version: version as u32,
+        sequence,
+        qualities: quality.map_or_else(|| vec![0; text.len()], |q| q.bytes[..text.len()].to_vec()),
+        qualities_known: quality.is_some(),
+        peaks,
+    })
+}
 pub fn read(name: &str, b: &[u8]) -> Result<Document> {
     let entries = directory(b)?;
     let get = |tag: &[u8; 4], v| {
@@ -77,41 +131,14 @@ pub fn read(name: &str, b: &[u8]) -> Result<Document> {
     } else {
         2
     };
-    let calls = get(b"PBAS", version)?;
-    if calls.size != 1 {
-        return Err(bad("Unsupported call element size"));
-    }
-    let sequence = std::str::from_utf8(calls.bytes)
-        .map_err(|_| bad("Invalid base-call encoding"))?
-        .trim_end_matches('\0');
+    let active = call_set(&entries, version)?;
     let mut d = Document::new(
         Path::new(name)
             .file_stem()
             .unwrap_or_default()
             .to_string_lossy(),
-        sequence,
+        &active.sequence,
     )?;
-    let quality = get(b"PCON", version)?;
-    let peaks = get(b"PLOC", version)?;
-    if quality.size != 1
-        || quality.count < sequence.len()
-        || peaks.count < sequence.len()
-        || !matches!(peaks.size, 2 | 4)
-    {
-        return Err(bad("Inconsistent call/quality/peak arrays"));
-    }
-    let peaks: Vec<usize> = peaks
-        .bytes
-        .chunks_exact(peaks.size)
-        .take(sequence.len())
-        .map(|p| {
-            if p.len() == 2 {
-                u16::from_be_bytes(p.try_into().unwrap()) as usize
-            } else {
-                u32::from_be_bytes(p.try_into().unwrap()) as usize
-            }
-        })
-        .collect();
     let order = std::str::from_utf8(get(b"FWO_", 1)?.bytes)
         .map_err(|_| bad("Invalid channel order"))?
         .trim_end_matches('\0')
@@ -121,7 +148,7 @@ pub fn read(name: &str, b: &[u8]) -> Result<Document> {
         let e = get(b"DATA", v)?;
         if e.size != 2 || e.count > 2_000_000 {
             return Err(bad(
-                "Unsupported signal element size or more than 2 million samples",
+                "Unsupported signal size or more than 2 million samples",
             ));
         }
         channels.push(
@@ -130,15 +157,38 @@ pub fn read(name: &str, b: &[u8]) -> Result<Document> {
                 .0
                 .iter()
                 .map(|p| i16::from_be_bytes(*p).max(0) as u16)
-                .collect(),
+                .collect::<Vec<_>>(),
         );
+    }
+    let samples = channels.first().map_or(0, Vec::len);
+    let mut original_calls = vec![];
+    for v in [1, 2] {
+        if !entries.contains_key(&(*b"PBAS", v)) {
+            continue;
+        }
+        match call_set(&entries, v) {
+            Ok(calls) if !calls.sequence.is_empty() && calls.peaks.iter().all(|&p| p < samples) => {
+                original_calls.push(calls)
+            }
+            result => {
+                if v == version {
+                    return Err(bad("Active calls have invalid peak coordinates"));
+                }
+                d.warnings.push(format!("Alternate call family PBAS{v} is retained in original bytes but cannot be displayed: {}",result.err().map_or("invalid peak coordinates".into(),|e|e.to_string())));
+            }
+        }
     }
     d.trace = Some(Trace {
         calls_version: version as u32,
-        qualities: quality.bytes[..sequence.len()].to_vec(),
-        peaks,
+        qualities: active.qualities,
+        qualities_known: active.qualities_known,
+        peaks: active.peaks,
         channel_order: order,
         channels,
+        original_calls,
+        edited: false,
+        sample_range: None,
+        manual_calls: vec![],
     });
     d.source = Some(Source {
         file_name: name.into(),
@@ -147,9 +197,99 @@ pub fn read(name: &str, b: &[u8]) -> Result<Document> {
         retained_blocks: vec![],
     });
     d.description = "Imported Sanger sequencing trace".into();
-    d.warnings.push(format!("Read-only ABIF trace: PBAS/PCON/PLOC{version} and analysed DATA9–12 are displayed. Original bytes are retained; supported instrument parameters are available in Parameters. Alternate calls, base editing, trimming and alignment are not implemented. Negative signal samples are clipped to zero for display."));
+    d.warnings.push(format!("ABIF call family {version} and analysed DATA9–12 are displayed. Available original/edited call families can be selected in Trace tools. Original bytes and instrument records are retained. Negative signal samples are clipped to zero for display."));
+    if !d.trace.as_ref().unwrap().qualities_known {
+        d.warnings.push("No PCON quality array is present for the active calls. Quality is unknown; zero placeholders are not measured confidence.".into());
+    }
     d.validate()?;
     Ok(d)
+}
+/// Append the current calls as standard edited family 1. Every other directory
+/// entry still points to its original unchanged bytes, including raw signals and
+/// unknown instrument records. No private application payload is introduced.
+pub fn write(document: &Document) -> Result<Vec<u8>> {
+    document.validate()?;
+    let trace = document
+        .trace
+        .as_ref()
+        .ok_or_else(|| bad("No chromatogram to write"))?;
+    let source = document
+        .source
+        .as_ref()
+        .filter(|s| s.format == "ABIF")
+        .ok_or_else(|| bad("ABIF export requires an imported ABIF container"))?;
+    directory(&source.bytes)?;
+    let original = read(&source.file_name, &source.bytes)?;
+    if original.trace.as_ref().is_some_and(|old| {
+        old.channels != trace.channels || old.channel_order != trace.channel_order
+    }) {
+        return Err(bad(
+            "ABIF writing preserves original signal arrays; use SCF or ZTR for changed signal data",
+        ));
+    }
+    if original.sequence == document.sequence
+        && original.trace.as_ref().is_some_and(|t| {
+            t.peaks == trace.peaks
+                && t.qualities == trace.qualities
+                && t.qualities_known == trace.qualities_known
+        })
+    {
+        return Ok(source.bytes.to_vec());
+    }
+    let count = u32_at(&source.bytes, 18)?;
+    let old_offset = u32_at(&source.bytes, 26)?;
+    let mut entries = BTreeMap::<([u8; 4], usize), [u8; 28]>::new();
+    for index in 0..count {
+        let raw: [u8; 28] = source.bytes[old_offset + index * 28..old_offset + (index + 1) * 28]
+            .try_into()
+            .unwrap();
+        entries.insert((raw[..4].try_into().unwrap(), u32_at(&raw, 4)?), raw);
+    }
+    let mut output = source.bytes.to_vec();
+    for (tag, data_type, size, data) in [
+        (*b"PBAS", 2u16, 1u16, document.sequence.as_bytes().to_vec()),
+        (*b"PCON", 2, 1, trace.qualities.clone()),
+        (
+            *b"PLOC",
+            5,
+            4,
+            trace
+                .peaks
+                .iter()
+                .flat_map(|p| (*p as u32).to_be_bytes())
+                .collect(),
+        ),
+    ] {
+        if tag == *b"PCON" && !trace.qualities_known {
+            entries.remove(&(tag, 1));
+            continue;
+        }
+        let mut entry = [0u8; 28];
+        entry[..4].copy_from_slice(&tag);
+        entry[4..8].copy_from_slice(&1u32.to_be_bytes());
+        entry[8..10].copy_from_slice(&data_type.to_be_bytes());
+        entry[10..12].copy_from_slice(&size.to_be_bytes());
+        entry[12..16].copy_from_slice(&(data.len() as u32 / size as u32).to_be_bytes());
+        entry[16..20].copy_from_slice(&(data.len() as u32).to_be_bytes());
+        if data.len() <= 4 {
+            entry[20..20 + data.len()].copy_from_slice(&data);
+        } else {
+            entry[20..24].copy_from_slice(&(output.len() as u32).to_be_bytes());
+            output.extend(data);
+        }
+        entries.insert((tag, 1), entry);
+    }
+    let offset = output.len();
+    for entry in entries.values() {
+        output.extend(entry);
+    }
+    if output.len() as u64 > super::MAX_FILE {
+        return Err(bad("Edited file exceeds the 128 MiB limit"));
+    }
+    output[18..22].copy_from_slice(&(entries.len() as u32).to_be_bytes());
+    output[22..26].copy_from_slice(&(entries.len() as u32 * 28).to_be_bytes());
+    output[26..30].copy_from_slice(&(offset as u32).to_be_bytes());
+    Ok(output)
 }
 /// Selected ABIF parameters decoded using the public Applied Biosystems schema.
 /// Arrays and proprietary records remain in the original source bytes.
@@ -215,10 +355,12 @@ pub(crate) fn source_metadata(bytes: &[u8]) -> Result<Vec<(String, String)>> {
             b"SCAN" => "Scan count",
             b"Tmpr" => "Run temperature setting (°C)",
             b"FWO_" => "Channel order",
-            _ => continue,
+            _ => "Instrument record",
         };
-        let mut value = parameter_value(&entry)
-            .unwrap_or_else(|| "Unavailable: unsupported or malformed parameter encoding".into());
+        let mut value = parameter_value(&entry).unwrap_or_else(|| {
+            let preview=entry.bytes.iter().take(64).map(|b|format!("{b:02x}")).collect::<Vec<_>>().join(" ");
+            format!("Type {}; element size {}; count {}; {} bytes. Raw hexadecimal{}: {}. Full record retained in the original file.",entry.data_type,entry.size,entry.count,entry.bytes.len(),if entry.bytes.len()>64 {" (first 64 bytes)"}else{""},preview)
+        });
         if tag == *b"S/N%"
             && entry.data_type == 4
             && entry.count == 4
@@ -489,5 +631,54 @@ mod tests {
         let mut b = b.to_vec();
         b[26..30].copy_from_slice(&u32::MAX.to_be_bytes());
         assert!(read("bad", &b).is_err());
+    }
+    #[test]
+    fn edited_family_is_added_without_overwriting_original_basecaller_calls() {
+        let bytes = include_bytes!("../../../validation/fixtures/basecaller-only.ab1");
+        let mut document = read("original.ab1", bytes).unwrap();
+        let original = document.trace.as_ref().unwrap().original_calls[0].clone();
+        popgene_core::trace::replace_call(&mut document, 0, "N").unwrap();
+        popgene_core::trace::trim_calls(&mut document, popgene_core::Segment { start: 0, end: 3 })
+            .unwrap();
+        let output = write(&document).unwrap();
+        let reopened = read("edited.ab1", &output).unwrap();
+        assert_eq!(reopened.sequence, document.sequence);
+        let trace = reopened.trace.unwrap();
+        assert_eq!(trace.original_calls.len(), 2);
+        assert_eq!(trace.original_calls[1], original);
+        assert_eq!(trace.peaks, document.trace.unwrap().peaks);
+        let before = directory(bytes).unwrap();
+        let after = directory(&output).unwrap();
+        for (key, value) in before {
+            assert_eq!(after[&key].bytes, value.bytes, "{:?}", key);
+        }
+    }
+    #[test]
+    fn absent_quality_is_unknown_and_survives_call_export() {
+        let signals = [0_u8, 10, 0, 20, 0, 30, 0, 40];
+        let bytes = parameter_file(&[
+            (*b"FWO_", 1, 2, 1, b"ACGT"),
+            (*b"PBAS", 1, 2, 1, b"AC"),
+            (*b"PLOC", 1, 3, 2, &[0, 1, 0, 2]),
+            (*b"DATA", 9, 4, 2, &signals),
+            (*b"DATA", 10, 4, 2, &signals),
+            (*b"DATA", 11, 4, 2, &signals),
+            (*b"DATA", 12, 4, 2, &signals),
+        ]);
+        let mut document = read("missing-quality.ab1", &bytes).unwrap();
+        assert!(!document.trace.as_ref().unwrap().qualities_known);
+        assert!(
+            document
+                .warnings
+                .iter()
+                .any(|w| w.contains("Quality is unknown"))
+        );
+        assert!(popgene_core::trace::quality_trim_range(&document, 0, 1).is_err());
+        popgene_core::trace::replace_call(&mut document, 1, "G").unwrap();
+        let encoded = write(&document).unwrap();
+        assert!(!directory(&encoded).unwrap().contains_key(&(*b"PCON", 1)));
+        let reopened = read("edited.ab1", &encoded).unwrap();
+        assert_eq!(&*reopened.sequence, "AG");
+        assert!(!reopened.trace.unwrap().qualities_known);
     }
 }

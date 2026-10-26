@@ -1,0 +1,2 @@
+https://github.com/DanielKeep/rust-custom-derive/tree/d7eb4732f396e7c69cbe9595989f80a819724406
+Original project-level licence notices from the published revision or matching release tag. Files are retained without alteration; SHA-256 hashes are recorded in SOURCE.json.

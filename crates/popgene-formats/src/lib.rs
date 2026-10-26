@@ -3,19 +3,37 @@ use gb_io::{
     reader::SeqReader,
     seq::{Location, Seq, Topology},
 };
-use popgene_core::{Document, Feature, Molecule, Segment, Source};
+#[cfg(test)]
+use popgene_core::Segment;
+use popgene_core::{Document, Feature, Molecule, Source};
 use rusqlite::{Connection, OpenFlags};
 use sha2::{Digest, Sha256};
 use std::{fs, io::Write, path::Path, sync::Arc};
 use thiserror::Error;
 mod abif;
+mod canonical_json;
+mod duplex;
 mod embl;
+mod fastq;
+mod genbank_display;
+mod lineage;
+mod location;
+mod records;
+mod references;
 mod save;
+mod scf;
 mod source_metadata;
+mod ztr;
+pub use records::{import_records, open_records};
 pub use save::{SaveFormat, encode, save, save_warnings};
 pub use source_metadata::source_metadata;
 pub mod project;
 mod snapgene;
+pub use snapgene::{NativeAttachment, native_attachment_bytes, native_attachments};
+pub use snapgene::{NativeEmbeddedTrace, native_embedded_trace, native_embedded_traces};
+pub use snapgene::{NativeEnzymePanel, NativeEnzymePanels, native_enzyme_panels};
+pub use snapgene::{NativeHistoryEntry, native_history, native_history_document};
+mod snapgene_preserve;
 
 const MAX_FILE: u64 = 128 * 1024 * 1024;
 const APP_ID: i32 = 0x504f5047;
@@ -69,16 +87,33 @@ pub fn open(path: &Path) -> Result<Document> {
 }
 
 pub fn import(name: &str, bytes: &[u8]) -> Result<Document> {
+    let mut records = import_records(name, bytes)?;
+    if records.len() != 1 {
+        return Err(Error::Message(format!(
+            "Multiple records found ({}). Use the multi-record import interface to open every sequence.",
+            records.len()
+        )));
+    }
+    Ok(records.remove(0))
+}
+
+fn import_one(name: &str, bytes: &[u8]) -> Result<Document> {
     if bytes.len() as u64 > MAX_FILE {
         return Err(Error::Message("File too large.".into()));
     }
     if bytes.first() == Some(&9) {
         return snapgene::read(name, bytes);
     }
+    if bytes.starts_with(b"\xaeZTR\r\n\x1a\n") {
+        return ztr::read(name, bytes);
+    }
+    if bytes.starts_with(b".scf") {
+        return scf::read(name, bytes);
+    }
     if bytes.starts_with(b"ABIF") {
         return abif::read(name, bytes);
     }
-    let text=std::str::from_utf8(bytes).map_err(|_|Error::Message("Unsupported binary file. PopGene opens SnapGene DNA, Sanger ABIF, GenBank/GenPept, EMBL, FASTA and legacy .popgene documents.".into()))?;
+    let text=std::str::from_utf8(bytes).map_err(|_|Error::Message("Unsupported binary file. PopGene opens SnapGene DNA/RNA/protein, Sanger ABIF, GenBank/GenPept, EMBL, FASTA and legacy .popgene documents.".into()))?;
     let text = text.trim_start_matches('\u{feff}').trim_start();
     let (mut doc, format) = if text.starts_with('>') {
         (fasta(name, text)?, "FASTA")
@@ -88,7 +123,7 @@ pub fn import(name: &str, bytes: &[u8]) -> Result<Document> {
         (embl::read(text)?, "EMBL")
     } else {
         return Err(Error::Message(
-            "Unrecognized format. Choose a SnapGene DNA, GenBank/GenPept, EMBL, FASTA or ABIF file. Legacy .popgene files can be opened for conversion.".into(),
+            "Unrecognized format. Choose a SnapGene DNA/RNA/protein, GenBank/GenPept, EMBL, FASTA or ABIF file. Legacy .popgene files can be opened for conversion.".into(),
         ));
     };
     doc.source = Some(Source {
@@ -97,6 +132,14 @@ pub fn import(name: &str, bytes: &[u8]) -> Result<Document> {
         bytes: Arc::from(bytes),
         retained_blocks: vec![],
     });
+    if let Some(target) = match format {
+        "GenBank" => Some(SaveFormat::GenBank),
+        "EMBL" => Some(SaveFormat::Embl),
+        _ => None,
+    } {
+        duplex::read(&mut doc, bytes, target);
+        lineage::read(&mut doc, bytes, target);
+    }
     doc.validate()?;
     Ok(doc)
 }
@@ -272,24 +315,6 @@ fn one_genbank(bytes: &[u8]) -> Result<Seq> {
     Ok(record)
 }
 
-fn flatten(location: &Location, reverse: bool) -> Result<(Vec<Segment>, bool)> {
-    match location {
-        Location::Range((start,before),(end,after)) if *start>=0 && *end>*start && !before.0 && !after.0 =>
-            Ok((vec![Segment{start:*start as usize,end:*end as usize}],reverse)),
-        Location::Complement(inner) => flatten(inner,!reverse),
-        Location::Join(parts) => {
-            let mut result=vec![];
-            for p in parts {
-                let (pieces,strand)=flatten(p,reverse)?;
-                if strand!=reverse { return Err(Error::Message("Mixed-strand joined features are not supported yet.".into())); }
-                result.extend(pieces);
-            }
-            Ok((result,reverse))
-        }
-        _ => Err(Error::Message("A feature uses fuzzy, remote, between-base or another unsupported location. Import stopped to preserve its meaning.".into())),
-    }
-}
-
 fn genbank(bytes: &[u8]) -> Result<Document> {
     let record = one_genbank(bytes)?;
     let molecule_type = record
@@ -320,8 +345,19 @@ fn genbank(bytes: &[u8]) -> Result<Document> {
     } else {
         raw.into()
     };
+    let label = if genbank_display::advertised(&record) {
+        record
+            .keywords
+            .as_ref()
+            .filter(|value| !value.trim().is_empty() && value.trim() != ".")
+    } else {
+        None
+    };
     let mut doc = Document::new_typed(
-        record.name.clone().unwrap_or_else(|| "Untitled".into()),
+        label
+            .map(|label| label.split_whitespace().collect::<Vec<_>>().join(" "))
+            .or_else(|| record.name.clone())
+            .unwrap_or_else(|| "Untitled".into()),
         &sequence,
         molecule,
     )?;
@@ -336,8 +372,33 @@ fn genbank(bytes: &[u8]) -> Result<Document> {
     doc.description = record.definition.unwrap_or_default();
     doc.accession = record.accession;
     doc.comments = record.comments;
+    doc.references = record
+        .references
+        .iter()
+        .map(references::from_genbank)
+        .collect();
     for (index, f) in record.features.iter().enumerate() {
-        let (parts, reverse) = flatten(&f.location, false)?;
+        let explicit = location::from_genbank(&f.location)?;
+        explicit
+            .validate(doc.sequence.len(), doc.circular)
+            .map_err(|e| Error::Message(e.to_string()))?;
+        let (parts, reverse) = explicit
+            .uniform_projection()
+            .unwrap_or_else(|| (explicit.local_parts(), false));
+        let mut canonical = if parts.len() == 1 {
+            Location::simple_range(parts[0].start as i64, parts[0].end as i64)
+        } else {
+            Location::Join(
+                parts
+                    .iter()
+                    .map(|p| Location::simple_range(p.start as i64, p.end as i64))
+                    .collect(),
+            )
+        };
+        if reverse {
+            canonical = Location::Complement(Box::new(canonical));
+        }
+        let feature_location = (canonical != f.location).then_some(explicit);
         let label = f
             .qualifier_values("label")
             .next()
@@ -346,6 +407,7 @@ fn genbank(bytes: &[u8]) -> Result<Document> {
             .unwrap_or(&f.kind)
             .to_owned();
         doc.features.push(Feature {
+            location: feature_location,
             id: index as u64 + 1,
             label,
             kind: f.kind.to_string(),
@@ -365,11 +427,19 @@ fn genbank(bytes: &[u8]) -> Result<Document> {
             edited: false,
         });
     }
-    doc.warnings.push("GenBank metadata and original bytes are retained; qualifier whitespace is normalized. Primer records are currently displayed as binding features; independent oligo editing is not implemented.".into());
+    doc.warnings.push("GenBank metadata and original bytes are retained; qualifier whitespace is normalized. Primer oligos are read only from explicit sequence metadata, including any tails and original letter case.".into());
     Ok(doc)
 }
 
 pub fn genbank_bytes(doc: &Document) -> Result<Vec<u8>> {
+    lineage::write(doc, SaveFormat::GenBank, genbank_bytes_physical)
+}
+
+fn genbank_bytes_physical(doc: &Document) -> Result<Vec<u8>> {
+    duplex::write(doc, SaveFormat::GenBank, genbank_bytes_plain)
+}
+
+fn genbank_bytes_plain(doc: &Document) -> Result<Vec<u8>> {
     doc.validate()?;
     let valid_key =
         |key: &str| !key.is_empty() && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
@@ -396,6 +466,8 @@ pub fn genbank_bytes(doc: &Document) -> Result<Vec<u8>> {
     } else {
         Seq::empty()
     };
+    let source_advertised = genbank_display::advertised(&record);
+    let extended = genbank_display::uses_extension(doc);
     record.name = Some(save::safe_name(&doc.name));
     record.seq = doc.sequence.as_bytes().to_vec();
     record.len = Some(doc.sequence.len());
@@ -418,11 +490,30 @@ pub fn genbank_bytes(doc: &Document) -> Result<Vec<u8>> {
     record.contig = None;
     record.accession = doc.accession.clone();
     record.comments = doc.comments.clone();
+    record.references = doc
+        .references
+        .iter()
+        .enumerate()
+        .map(|(i, r)| references::to_genbank(r, i))
+        .collect();
+    if extended {
+        genbank_display::apply_header(doc, &mut record, source_advertised);
+    }
+    if doc
+        .features
+        .iter()
+        .any(|feature| feature.parts.is_empty() && feature.location.is_none())
+    {
+        return Err(Error::Message("GenBank has no unbound-primer location. Save native SnapGene to preserve independent oligos, or remove unbound oligos explicitly before conversion.".into()));
+    }
     record.features = doc
         .features
         .iter()
-        .map(|f| {
-            let mut location = if f.parts.len() == 1 {
+        .enumerate()
+        .map(|(feature_index, f)| {
+            let mut location = if let Some(explicit) = &f.location {
+                location::to_genbank(explicit)
+            } else if f.parts.len() == 1 {
                 Location::simple_range(f.parts[0].start as i64, f.parts[0].end as i64)
             } else {
                 Location::Join(
@@ -432,7 +523,7 @@ pub fn genbank_bytes(doc: &Document) -> Result<Vec<u8>> {
                         .collect(),
                 )
             };
-            if f.reverse {
+            if f.reverse && f.location.is_none() {
                 location = Location::Complement(Box::new(location));
             }
             let mut qualifiers: Vec<_> = f
@@ -461,7 +552,7 @@ pub fn genbank_bytes(doc: &Document) -> Result<Vec<u8>> {
             }
             if f.edited {
                 let index = f
-                    .segment_display_note()
+                    .terminal_display_note()
                     .and_then(|note| {
                         qualifiers.iter().rposition(|(key, value)| {
                             key == "note" && value.as_deref() == Some(note)
@@ -475,6 +566,16 @@ pub fn genbank_bytes(doc: &Document) -> Result<Vec<u8>> {
                         Some("Sequence changed in PopGene; annotation needs review.".into()),
                     ),
                 );
+            }
+            if let Some(note) = f.interchange_display_note_at(feature_index)
+                && qualifiers
+                    .iter()
+                    .rev()
+                    .find(|(key, _)| key == "note")
+                    .and_then(|(_, value)| value.as_deref())
+                    != Some(note.as_str())
+            {
+                qualifiers.push(("note".into(), Some(note)));
             }
             gb_io::seq::Feature {
                 kind: f.kind.clone().into(),

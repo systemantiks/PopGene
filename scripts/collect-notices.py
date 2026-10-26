@@ -22,6 +22,7 @@ def is_notice(path):
         return False
     name = path.name.upper()
     return (name.startswith(('LICENSE', 'LICENCE', 'COPYING', 'NOTICE', 'COPYRIGHT'))
+            or (path.parent.name.upper() in ('LICENSES', 'LICENCES') and path.suffix.lower() == '.txt')
             or name in ('OFL.TXT', 'UFL.TXT', 'UNLICENSE')
             or ('LICENSE' in name and path.suffix.lower() in ('.txt', '.md', '.rst')))
 
@@ -42,6 +43,64 @@ def replace_directory(staged, destination):
         raise
     if had_previous:
         shutil.rmtree(previous)
+
+
+def reuse_attribution(source, out):
+    """Retain REUSE source attribution alongside its generic licence texts."""
+    if not any((source / name).is_dir() for name in ('LICENSES', 'LICENCES')):
+        return None
+    blocks = []
+    for path in sorted(source.rglob('*')):
+        if not path.is_file() or is_notice(path):
+            continue
+        relative = path.resolve().relative_to(source.resolve())
+        try:
+            lines = path.read_text(encoding='utf-8').splitlines()
+        except UnicodeDecodeError:
+            continue
+        attribution = [line for line in lines if 'SPDX-FileCopyrightText:' in line
+                       or 'SPDX-License-Identifier:' in line]
+        if attribution:
+            blocks.append(f'--- {relative} ---\n' + '\n'.join(attribution))
+    if not blocks:
+        return None
+    name = 'COPYRIGHT-SPDX.txt'
+    out.mkdir(parents=True, exist_ok=True)
+    (out / name).write_text('Verbatim SPDX attribution lines from the published package.\n\n'
+                            + '\n\n'.join(blocks) + '\n', encoding='utf-8')
+    return name
+
+
+def collect_local_components(staged):
+    """Include directly compiled C and format-reference notices outside Cargo."""
+    components = [
+        ('primer3-source', 'crates/popgene-core/vendor/primer3',
+         'Compiled C source: Primer3 2.6.1 from primer3-py 2.3.1; original source headers, klib MIT notice and GPL text retained.'),
+        ('biopython-format-reference', 'vendor-notices/biopython-reference',
+         'Format and independent-validation reference; Python is not linked into the application.'),
+        ('sgffp-format-reference', 'vendor-notices/sgffp-reference',
+         'Native-format layout reference; Python implementation is not bundled.'),
+        ('autosnapgene-format-reference', 'vendor-notices/autosnapgene-reference',
+         'Native cleavage-arrow and explicit-enzyme-panel format reference; Python and upstream sequence fixtures are not bundled.'),
+        ('staden-io-lib-reference', 'vendor-notices/staden-io-lib',
+         'Trace-format algorithm/reference notices; original copyright and redistribution terms retained.'),
+        ('figure-fonts', 'vendor-notices/figure-fonts',
+         'Unmodified Noto Sans and Fira Mono font files embedded in every application binary for portable figure exports; SIL Open Font License 1.1 notices and original-source checksums retained.'),
+    ]
+    result = []
+    for name, relative, scope in components:
+        source = ROOT / relative
+        source.resolve().relative_to(ROOT.resolve())
+        files = sorted(path for path in source.rglob('*') if path.is_file())
+        if not files or not any(is_notice(path) for path in files):
+            raise RuntimeError(f'Missing local-component licence notice: {relative}')
+        hashes = {}
+        for path in files:
+            path.resolve().relative_to(source.resolve())
+            hashes[str(path.relative_to(source))] = hashlib.sha256(path.read_bytes()).hexdigest()
+        shutil.copytree(source, staged / name)
+        result.append({'name': name, 'source': relative, 'scope': scope, 'sha256': hashes})
+    return result
 
 
 def collect(metadata, target, destination, strict=False):
@@ -73,6 +132,7 @@ def collect(metadata, target, destination, strict=False):
                 output = out / relative
                 output.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(file, output)
+            source_attribution = reuse_attribution(source, out)
             supplement = supplements.get(key)
             supplement_files = []
             if supplement:
@@ -91,6 +151,7 @@ def collect(metadata, target, destination, strict=False):
                 'repository': package['repository'],
                 'notice_files': len(notices),
                 'notice_paths': [str(p.resolve().relative_to(source.resolve())) for p in notices],
+                'source_attribution': source_attribution,
                 'supplement': supplement, 'supplement_files': supplement_files,
                 'provenance_gap': provenance,
             }
@@ -100,15 +161,16 @@ def collect(metadata, target, destination, strict=False):
             raise RuntimeError('No notices or reviewed supplements for: ' + ', '.join(missing))
         if strict and current_gaps:
             raise RuntimeError('Strict notice review requires resolving: ' + ', '.join(current_gaps))
+        local_components = collect_local_components(staged)
         result = {
             'target': target,
             'cargo_lock_sha256': hashlib.sha256((ROOT / 'Cargo.lock').read_bytes()).hexdigest(),
-            'scope': 'Resolved registry dependencies for this target, including build dependencies; not a linked-code SBOM.',
+            'scope': 'Resolved registry dependencies, directly compiled vendored C, and format-reference notices; not a linked-code SBOM.',
             'provenance_gaps': current_gaps,
             'packages': inventory,
+            'local_components': local_components,
         }
         (staged / 'inventory.json').write_text(json.dumps(result, indent=2) + '\n')
-        shutil.copytree(ROOT / 'vendor-notices/biopython-reference', staged / 'biopython-format-reference')
         shutil.copy2(ROOT / 'THIRD_PARTY.md', staged / 'README.md')
         replace_directory(staged, destination)
     print(f'Collected notices and reviewed supplements for {len(inventory)} resolved packages ({target}).')

@@ -1,33 +1,52 @@
 //! Bounded, deterministic nucleotide translation.
 //!
-//! Codon assignments and initiators: NCBI Genetic Codes, tables 1, 2 and 11,
-//! https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi (2024-09-23 revision).
-//! CDS offsets follow INSDC codon_start. Exceptions are refused explicitly.
-//! Frame translation does not infer ORFs or translate across a circular seam.
+//! All 27 active NCBI genetic codes, gc.prt v4.6 (verified 2026-10-25):
+//! https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi
+//! Exact local transl_except and joined ribosomal-slippage coordinates follow
+//! https://www.insdc.org/submitting-standards/feature-table/ (v11.4, April 2026).
 use crate::{Document, Feature, Molecule};
 use std::{fmt, ops::Range};
 
+mod exceptions;
+mod flanks;
+mod genetic_codes;
+pub use flanks::{FlankingCodon, cds_flanking_codons};
+mod orfs;
+#[cfg(test)]
+mod regression;
+pub use exceptions::{
+    project_translation_exceptions, remap_translation_exceptions, reverse_translation_exceptions,
+};
+pub use orfs::{Orf, OrfOptions, OrfSearch, find_orfs};
+
+/// One of the 27 active NCBI genetic codes. Retired IDs are not accepted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GeneticCode {
-    Standard,
-    VertebrateMitochondrial,
-    Bacterial,
-}
+pub struct GeneticCode(usize);
 impl GeneticCode {
+    pub const STANDARD: Self = Self(0);
+    pub const VERTEBRATE_MITOCHONDRIAL: Self = Self(1);
+    pub const BACTERIAL: Self = Self(8);
     pub fn from_id(id: u16) -> Option<Self> {
-        match id {
-            1 => Some(Self::Standard),
-            2 => Some(Self::VertebrateMitochondrial),
-            11 => Some(Self::Bacterial),
-            _ => None,
-        }
+        genetic_codes::CODES
+            .iter()
+            .position(|code| code.id == id)
+            .map(Self)
+    }
+    pub fn all() -> impl Iterator<Item = Self> {
+        (0..genetic_codes::CODES.len()).map(Self)
     }
     pub fn id(self) -> u16 {
-        match self {
-            Self::Standard => 1,
-            Self::VertebrateMitochondrial => 2,
-            Self::Bacterial => 11,
-        }
+        genetic_codes::CODES[self.0].id
+    }
+    pub fn name(self) -> &'static str {
+        genetic_codes::CODES[self.0].name
+    }
+    pub fn has_context_dependent_stops(self) -> bool {
+        let data = &genetic_codes::CODES[self.0];
+        data.starts
+            .iter()
+            .zip(data.amino_acids)
+            .any(|(&flag, &aa)| flag == b'*' && aa != b'*')
     }
 }
 
@@ -40,8 +59,6 @@ impl fmt::Display for TranslationError {
 }
 impl std::error::Error for TranslationError {}
 
-/// NCBI's TCAG codon order. Table 11 has the same internal codons as table 1.
-const STANDARD: &[u8; 64] = b"FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG";
 fn mask(base: u8) -> u8 {
     match base.to_ascii_uppercase() {
         b'T' | b'U' => 1,
@@ -63,15 +80,54 @@ fn mask(base: u8) -> u8 {
     }
 }
 fn concrete(index: usize, code: GeneticCode) -> u8 {
-    if code == GeneticCode::VertebrateMitochondrial {
-        match index {
-            14 => return b'W',      // TGA
-            34 => return b'M',      // ATA
-            46 | 47 => return b'*', // AGA / AGG
-            _ => {}
+    genetic_codes::CODES[code.0].amino_acids[index]
+}
+
+/// A predicate must hold for every possible concrete codon.
+fn all_codons(codon: [u8; 3], predicate: impl Fn(usize) -> bool) -> bool {
+    let masks = codon.map(mask);
+    if masks.contains(&0) {
+        return false;
+    }
+    if masks.iter().all(|mask| mask.count_ones() == 1) {
+        return predicate(
+            (masks[0].trailing_zeros() * 16
+                + masks[1].trailing_zeros() * 4
+                + masks[2].trailing_zeros()) as usize,
+        );
+    }
+    for first in 0..4 {
+        for second in 0..4 {
+            for third in 0..4 {
+                if masks[0] & (1 << first) != 0
+                    && masks[1] & (1 << second) != 0
+                    && masks[2] & (1 << third) != 0
+                    && !predicate(first * 16 + second * 4 + third)
+                {
+                    return false;
+                }
+            }
         }
     }
-    STANDARD[index]
+    true
+}
+
+pub fn is_start_codon(codon: [u8; 3], code: GeneticCode, alternative_starts: bool) -> bool {
+    all_codons(codon, |index| {
+        if alternative_starts {
+            genetic_codes::CODES[code.0].starts[index] == b'M'
+        } else {
+            index == 35
+        }
+    })
+}
+/// Terminal flags include dual-coding codons in NCBI tables 27, 28 and 31.
+/// Such codons translate as amino acids internally; their terminal use requires
+/// an annotated CDS boundary or an explicitly labelled ORF prediction.
+pub fn is_stop_codon(codon: [u8; 3], code: GeneticCode) -> bool {
+    all_codons(codon, |index| {
+        genetic_codes::CODES[code.0].starts[index] == b'*'
+    })
 }
 
 /// Ambiguity resolves only when every concrete codon has the same assignment.
@@ -80,6 +136,14 @@ pub fn translate_codon(codon: [u8; 3], code: GeneticCode) -> u8 {
     let masks = codon.map(mask);
     if masks.contains(&0) {
         return b'X';
+    }
+    if masks.iter().all(|mask| mask.count_ones() == 1) {
+        return concrete(
+            (masks[0].trailing_zeros() * 16
+                + masks[1].trailing_zeros() * 4
+                + masks[2].trailing_zeros()) as usize,
+            code,
+        );
     }
     let mut result = None;
     for first in 0..4 {
@@ -125,48 +189,90 @@ pub fn complement(base: u8) -> u8 {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FrameCodon {
     pub center: usize,
+    /// A contiguous display interval; wrapped codons highlight their center only.
     pub start: usize,
     pub end: usize,
     pub amino_acid: u8,
+    pub positions: [usize; 3],
+}
+impl FrameCodon {
+    pub fn selection(&self) -> Vec<crate::Segment> {
+        let mut positions = self.positions;
+        positions.sort_unstable();
+        let mut result: Vec<crate::Segment> = vec![];
+        for p in positions {
+            if let Some(last) = result.last_mut()
+                && last.end == p
+            {
+                last.end = p + 1;
+                continue;
+            }
+            result.push(crate::Segment {
+                start: p,
+                end: p + 1,
+            });
+        }
+        result
+    }
 }
 
-/// Codons centered in a visible forward-coordinate range. Reverse frame -1
-/// starts at the final nucleotide, -2 one base before it, -3 two before it.
-/// Complete codons can straddle a visual row boundary, but never sequence ends.
+/// Backward-compatible linear standard-code frame calculation.
 pub fn frame_codons(sequence: &str, frame: i8, range: Range<usize>) -> Vec<FrameCodon> {
-    if !matches!(frame, -3..=-1 | 1..=3) {
+    frame_codons_with_options(sequence, frame, range, GeneticCode::STANDARD, false)
+}
+/// Each frame is anchored at its strand's 5′ end. Circular codons may cross the
+/// origin once; when length is not divisible by three, the phase changes across
+/// the seam. Codons are returned only when their central base is in the row.
+pub fn frame_codons_with_options(
+    sequence: &str,
+    frame: i8,
+    range: Range<usize>,
+    code: GeneticCode,
+    circular: bool,
+) -> Vec<FrameCodon> {
+    let n = sequence.len();
+    if !matches!(frame,-3..=-1|1..=3) || n < 3 {
         return vec![];
     }
-    let bases = sequence.as_bytes();
     let phase = usize::from(frame.unsigned_abs() - 1);
     let mut result = vec![];
-    for center in range.start.min(bases.len())..range.end.min(bases.len()) {
-        let coding_center = if frame < 0 {
-            bases.len() - 1 - center
+    for center in range.start.min(n)..range.end.min(n) {
+        let coding_center = if frame < 0 { n - 1 - center } else { center };
+        let offset = if circular {
+            (coding_center + n - 1) % n
         } else {
-            center
+            let Some(offset) = coding_center.checked_sub(1) else {
+                continue;
+            };
+            offset
         };
-        if coding_center < phase + 1
-            || (coding_center - phase) % 3 != 1
-            || center == 0
-            || center + 1 >= bases.len()
-        {
+        if offset < phase || (offset - phase) % 3 != 0 || (!circular && offset + 3 > n) {
             continue;
         }
-        let codon = if frame < 0 {
-            [
-                complement(bases[center + 1]),
-                complement(bases[center]),
-                complement(bases[center - 1]),
-            ]
+        let positions = std::array::from_fn(|i| {
+            let p = (offset + i) % n;
+            if frame < 0 { n - 1 - p } else { p }
+        });
+        let codon = positions.map(|p| {
+            if frame < 0 {
+                complement(sequence.as_bytes()[p])
+            } else {
+                sequence.as_bytes()[p]
+            }
+        });
+        let lo = *positions.iter().min().unwrap();
+        let hi = *positions.iter().max().unwrap();
+        let (start, end) = if hi - lo == 2 {
+            (lo, hi + 1)
         } else {
-            [bases[center - 1], bases[center], bases[center + 1]]
+            (center, center + 1)
         };
         result.push(FrameCodon {
             center,
-            start: center - 1,
-            end: center + 2,
-            amino_acid: translate_codon(codon, GeneticCode::Standard),
+            start,
+            end,
+            amino_acid: translate_codon(codon, code),
+            positions,
         });
     }
     result
@@ -178,6 +284,8 @@ pub struct CdsTranslation {
     pub phase: usize,
     pub genetic_code: u16,
     pub trailing_bases: usize,
+    pub exception_codons: Vec<usize>,
+    pub terminal_partial_stop: bool,
 }
 
 fn qualifier<'a>(feature: &'a Feature, name: &str) -> Result<Option<&'a str>, TranslationError> {
@@ -241,32 +349,6 @@ pub fn cds_phase(feature: &Feature) -> Result<usize, TranslationError> {
     }
     Ok(recorded.or(native).unwrap_or(0))
 }
-fn initiator(codon: [u8; 3], code: GeneticCode) -> bool {
-    let masks = codon.map(mask);
-    if masks.contains(&0) {
-        return false;
-    }
-    let allowed: &[usize] = match code {
-        GeneticCode::Standard => &[3, 19, 35],
-        GeneticCode::VertebrateMitochondrial => &[32, 33, 34, 35, 51],
-        GeneticCode::Bacterial => &[3, 19, 32, 33, 34, 35, 51],
-    };
-    for first in 0..4 {
-        for second in 0..4 {
-            for third in 0..4 {
-                if masks[0] & (1 << first) != 0
-                    && masks[1] & (1 << second) != 0
-                    && masks[2] & (1 << third) != 0
-                    && !allowed.contains(&(first * 16 + second * 4 + third))
-                {
-                    return false;
-                }
-            }
-        }
-    }
-    true
-}
-
 /// Calculate from the current sequence, never from a cached /translation value.
 /// The result includes terminal/internal '*' and ignores incomplete trailing
 /// codons. Whole ordered parts are concatenated then reverse-complemented.
@@ -277,21 +359,36 @@ pub fn translate_cds(
     if document.molecule == Molecule::Protein || !feature.kind.eq_ignore_ascii_case("CDS") {
         return Err(TranslationError("not a nucleotide CDS".into()));
     }
-    for (key, _) in &feature.qualifiers {
-        if matches!(
-            key.as_str(),
-            "transl_except"
-                | "exception"
-                | "ribosomal_slippage"
-                | "codon"
-                | "pseudo"
-                | "pseudogene"
-        ) {
+    for (key, value) in &feature.qualifiers {
+        let needs_review = match key.as_str() {
+            "exception" => {
+                value.as_deref().map(str::trim) != Some("ribosomal slippage")
+                    || feature.parts.len() < 2
+            }
+            "ribosomal_slippage" => feature.parts.len() < 2,
+            "codon" | "pseudo" | "pseudogene" | exceptions::REVIEW => true,
+            _ => false,
+        };
+        if needs_review {
             return Err(TranslationError(format!(
-                "/{key} requires interpretation; calculated CDS translation omitted"
+                "/{key} requires review; no calculated translation is asserted"
             )));
         }
     }
+    let (partial_start, partial_end) = if let Some(location) = &feature.location {
+        location
+            .validate(document.sequence.len(), document.circular)
+            .map_err(|e| TranslationError(e.to_string()))?;
+        let (parts,reverse)=location.uniform_projection().ok_or_else(||TranslationError("CDS location is not a resolved local join on one strand; remote, mixed-strand, order, gap or alternative locations need review".into()))?;
+        if parts != feature.parts || reverse != feature.reverse {
+            return Err(TranslationError(
+                "CDS location and displayed coordinate projection disagree".into(),
+            ));
+        }
+        location.partial_ends()
+    } else {
+        (false, false)
+    };
     let phase = cds_phase(feature)?;
     let table = qualifier(feature, "transl_table")?
         .unwrap_or("1")
@@ -299,7 +396,7 @@ pub fn translate_cds(
         .map_err(|_| TranslationError("invalid /transl_table".into()))?;
     let code = GeneticCode::from_id(table).ok_or_else(|| {
         TranslationError(format!(
-            "genetic code table {table} is unsupported (supported: 1, 2, 11)"
+            "genetic code table {table} is not an active NCBI code"
         ))
     })?;
     if feature.parts.is_empty()
@@ -325,19 +422,105 @@ pub fn translate_cds(
     }
     let coding = coding.get(phase..).unwrap_or_default();
     let mut amino_acids = Vec::with_capacity(coding.len() / 3);
+    let context_dependent_stops = code.has_context_dependent_stops();
     for (index, &codon) in coding.as_chunks::<3>().0.iter().enumerate() {
-        let aa = if index == 0 && phase == 0 && initiator(codon, code) {
+        let aa = if context_dependent_stops
+            && !partial_end
+            && coding.len() % 3 == 0
+            && (index + 1) * 3 == coding.len()
+            && is_stop_codon(codon, code)
+        {
+            b'*'
+        } else if index == 0 && phase == 0 && !partial_start && is_start_codon(codon, code, true) {
             b'M'
         } else {
             translate_codon(codon, code)
         };
         amino_acids.push(aa);
     }
+    let mut targets = std::collections::BTreeMap::new();
+    for (_, value) in feature
+        .qualifiers
+        .iter()
+        .filter(|(key, _)| key == "transl_except")
+    {
+        if targets.len() >= 1024 {
+            return Err(TranslationError(
+                "too many translation exceptions (limit 1024)".into(),
+            ));
+        }
+        let exception = exceptions::parse(
+            value
+                .as_deref()
+                .ok_or_else(|| TranslationError("/transl_except has no value".into()))?,
+        )?;
+        if exception.reverse != feature.reverse {
+            return Err(TranslationError(
+                "/transl_except strand does not match the CDS".into(),
+            ));
+        }
+        if let Some(&(aa, _)) = targets.get(&exception.positions)
+            && aa != exception.amino_acid
+        {
+            return Err(TranslationError(
+                "conflicting /transl_except residues at the same codon".into(),
+            ));
+        }
+        targets.insert(exception.positions, (exception.amino_acid, 0_usize));
+    }
+    let mut exception_codons = vec![];
+    let mut terminal_partial_stop = false;
+    if !targets.is_empty() {
+        let mut positions: Vec<_> = feature
+            .parts
+            .iter()
+            .flat_map(|part| part.start..part.end)
+            .collect();
+        if feature.reverse {
+            positions.reverse();
+        }
+        for (index, codon_positions) in positions
+            .get(phase..)
+            .unwrap_or_default()
+            .chunks(3)
+            .enumerate()
+        {
+            if let Some((aa, hits)) = targets.get_mut(codon_positions) {
+                *hits += 1;
+                if codon_positions.len() == 3 {
+                    amino_acids[index] = *aa;
+                } else {
+                    // INSDC allows a final one/two-base TERM completed by poly-A.
+                    // Only trailing T or TA can become TAA after adding A bases.
+                    let partial = &coding[index * 3..];
+                    if *aa != b'*'
+                        || !matches!(partial, [b'T'] | [b'T', b'A'] | [b'U'] | [b'U', b'A'])
+                    {
+                        return Err(TranslationError("partial /transl_except TERM must be trailing T or TA completed by polyadenylation".into()));
+                    }
+                    amino_acids.push(b'*');
+                    terminal_partial_stop = true;
+                }
+                exception_codons.push(index);
+            }
+        }
+        if targets.values().any(|(_, hits)| *hits != 1) {
+            return Err(TranslationError(
+                "/transl_except must identify exactly one codon in the CDS reading frame".into(),
+            ));
+        }
+    }
     Ok(CdsTranslation {
         amino_acids,
         phase,
         genetic_code: code.id(),
-        trailing_bases: coding.len() % 3,
+        trailing_bases: if terminal_partial_stop {
+            0
+        } else {
+            coding.len() % 3
+        },
+        exception_codons,
+        terminal_partial_stop,
     })
 }
 
@@ -348,6 +531,7 @@ mod tests {
     fn cds(sequence: &str, reverse: bool) -> (Document, Feature) {
         let doc = Document::new("translation", sequence).unwrap();
         let feature = Feature {
+            location: None,
             id: 1,
             label: "CDS".into(),
             kind: "CDS".into(),
@@ -389,7 +573,7 @@ mod tests {
         ] {
             for codon in codons.split_whitespace() {
                 assert_eq!(
-                    translate_codon(codon.as_bytes().try_into().unwrap(), GeneticCode::Standard),
+                    translate_codon(codon.as_bytes().try_into().unwrap(), GeneticCode::STANDARD),
                     amino,
                     "{codon}"
                 );
@@ -407,7 +591,7 @@ mod tests {
             ("aug", b'M'),
         ] {
             assert_eq!(
-                translate_codon(codon.as_bytes().try_into().unwrap(), GeneticCode::Standard),
+                translate_codon(codon.as_bytes().try_into().unwrap(), GeneticCode::STANDARD),
                 aa
             );
         }
@@ -415,12 +599,13 @@ mod tests {
             assert_eq!(
                 translate_codon(
                     codon.as_bytes().try_into().unwrap(),
-                    GeneticCode::VertebrateMitochondrial
+                    GeneticCode::VERTEBRATE_MITOCHONDRIAL
                 ),
                 aa
             );
         }
-        assert_eq!(GeneticCode::from_id(4), None);
+        assert_eq!(GeneticCode::from_id(7), None);
+        assert_eq!(GeneticCode::all().count(), 27);
     }
     #[test]
     fn six_frames_use_complete_codons_and_reverse_complement_coordinates() {
@@ -453,7 +638,8 @@ mod tests {
                 center: 4,
                 start: 3,
                 end: 6,
-                amino_acid: b'K'
+                amino_acid: b'K',
+                positions: [3, 4, 5]
             }]
         );
         assert!(frame_codons("AT", 1, 0..2).is_empty());
@@ -506,9 +692,9 @@ mod tests {
         assert_eq!(result.amino_acids, b"MK*");
         assert_eq!(result.trailing_bases, 1);
         for (key, value) in [
-            ("transl_table", "4"),
+            ("transl_table", "7"),
             ("codon_start", "0"),
-            ("transl_except", "(pos:1..3,aa:Sec)"),
+            ("transl_except", "(pos:2..4,aa:Sec)"),
             ("exception", "RNA editing"),
             ("pseudo", ""),
         ] {

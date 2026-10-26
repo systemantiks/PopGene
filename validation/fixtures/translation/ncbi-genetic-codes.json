@@ -1,0 +1,170 @@
+{
+  "source": "https://ftp.ncbi.nih.gov/entrez/misc/data/gc.prt",
+  "version": "4.6",
+  "retrieved": "2026-10-25",
+  "source_sha256": "2aecbdd09ecc5e0d233c105090a593737298ef93d88f6bc0c1bef26df6051a04",
+  "tables": [
+    {
+      "id": 1,
+      "name": "Standard",
+      "amino_acids": "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "---M------**--*----M---------------M----------------------------"
+    },
+    {
+      "id": 2,
+      "name": "Vertebrate Mitochondrial",
+      "amino_acids": "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIMMTTTTNNKKSS**VVVVAAAADDEEGGGG",
+      "starts": "----------**--------------------MMMM----------**---M------------"
+    },
+    {
+      "id": 3,
+      "name": "Yeast Mitochondrial",
+      "amino_acids": "FFLLSSSSYY**CCWWTTTTPPPPHHQQRRRRIIMMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "----------**----------------------MM---------------M------------"
+    },
+    {
+      "id": 4,
+      "name": "Mold Mitochondrial; Protozoan Mitochondrial; Coelenterate\n Mitochondrial; Mycoplasma; Spiroplasma",
+      "amino_acids": "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "--MM------**-------M------------MMMM---------------M------------"
+    },
+    {
+      "id": 5,
+      "name": "Invertebrate Mitochondrial",
+      "amino_acids": "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIMMTTTTNNKKSSSSVVVVAAAADDEEGGGG",
+      "starts": "---M------**--------------------MMMM---------------M------------"
+    },
+    {
+      "id": 6,
+      "name": "Ciliate Nuclear; Dasycladacean Nuclear; Hexamita Nuclear",
+      "amino_acids": "FFLLSSSSYYQQCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "--------------*--------------------M----------------------------"
+    },
+    {
+      "id": 9,
+      "name": "Echinoderm Mitochondrial; Flatworm Mitochondrial",
+      "amino_acids": "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNNKSSSSVVVVAAAADDEEGGGG",
+      "starts": "----------**-----------------------M---------------M------------"
+    },
+    {
+      "id": 10,
+      "name": "Euplotid Nuclear",
+      "amino_acids": "FFLLSSSSYY**CCCWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "----------**-----------------------M----------------------------"
+    },
+    {
+      "id": 11,
+      "name": "Bacterial, Archaeal and Plant Plastid",
+      "amino_acids": "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "---M------**--*----M------------MMMM---------------M------------"
+    },
+    {
+      "id": 12,
+      "name": "Alternative Yeast Nuclear",
+      "amino_acids": "FFLLSSSSYY**CC*WLLLSPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "----------**--*----M---------------M----------------------------"
+    },
+    {
+      "id": 13,
+      "name": "Ascidian Mitochondrial",
+      "amino_acids": "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIMMTTTTNNKKSSGGVVVVAAAADDEEGGGG",
+      "starts": "---M------**----------------------MM---------------M------------"
+    },
+    {
+      "id": 14,
+      "name": "Alternative Flatworm Mitochondrial",
+      "amino_acids": "FFLLSSSSYYY*CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNNKSSSSVVVVAAAADDEEGGGG",
+      "starts": "-----------*-----------------------M----------------------------"
+    },
+    {
+      "id": 15,
+      "name": "Blepharisma Macronuclear",
+      "amino_acids": "FFLLSSSSYY*QCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "----------*---*--------------------M----------------------------"
+    },
+    {
+      "id": 16,
+      "name": "Chlorophycean Mitochondrial",
+      "amino_acids": "FFLLSSSSYY*LCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "----------*---*--------------------M----------------------------"
+    },
+    {
+      "id": 21,
+      "name": "Trematode Mitochondrial",
+      "amino_acids": "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIMMTTTTNNNKSSSSVVVVAAAADDEEGGGG",
+      "starts": "----------**-----------------------M---------------M------------"
+    },
+    {
+      "id": 22,
+      "name": "Scenedesmus obliquus Mitochondrial",
+      "amino_acids": "FFLLSS*SYY*LCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "------*---*---*--------------------M----------------------------"
+    },
+    {
+      "id": 23,
+      "name": "Thraustochytrium Mitochondrial",
+      "amino_acids": "FF*LSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "--*-------**--*-----------------M--M---------------M------------"
+    },
+    {
+      "id": 24,
+      "name": "Rhabdopleuridae Mitochondrial",
+      "amino_acids": "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSSKVVVVAAAADDEEGGGG",
+      "starts": "---M------**-------M---------------M---------------M------------"
+    },
+    {
+      "id": 25,
+      "name": "Candidate Division SR1 and Gracilibacteria",
+      "amino_acids": "FFLLSSSSYY**CCGWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "---M------**-----------------------M---------------M------------"
+    },
+    {
+      "id": 26,
+      "name": "Pachysolen tannophilus Nuclear",
+      "amino_acids": "FFLLSSSSYY**CC*WLLLAPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "----------**--*----M---------------M----------------------------"
+    },
+    {
+      "id": 27,
+      "name": "Karyorelict Nuclear",
+      "amino_acids": "FFLLSSSSYYQQCCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "--------------*--------------------M----------------------------"
+    },
+    {
+      "id": 28,
+      "name": "Condylostoma Nuclear",
+      "amino_acids": "FFLLSSSSYYQQCCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "----------**--*--------------------M----------------------------"
+    },
+    {
+      "id": 29,
+      "name": "Mesodinium Nuclear",
+      "amino_acids": "FFLLSSSSYYYYCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "--------------*--------------------M----------------------------"
+    },
+    {
+      "id": 30,
+      "name": "Peritrich Nuclear",
+      "amino_acids": "FFLLSSSSYYEECC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "--------------*--------------------M----------------------------"
+    },
+    {
+      "id": 31,
+      "name": "Blastocrithidia Nuclear",
+      "amino_acids": "FFLLSSSSYYEECCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "----------**-----------------------M----------------------------"
+    },
+    {
+      "id": 32,
+      "name": "Balanophoraceae Plastid",
+      "amino_acids": "FFLLSSSSYY*WCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+      "starts": "---M------*---*----M------------MMMM---------------M------------"
+    },
+    {
+      "id": 33,
+      "name": "Cephalodiscidae Mitochondrial",
+      "amino_acids": "FFLLSSSSYYY*CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSSKVVVVAAAADDEEGGGG",
+      "starts": "---M-------*-------M---------------M---------------M------------"
+    }
+  ]
+}

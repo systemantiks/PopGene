@@ -11,6 +11,9 @@
 //! Tables: https://github.com/biopython/biopython/blob/biopython-188/Bio/Data/IUPACData.py
 //! pKa reference: https://biopython.org/docs/latest/api/Bio.SeqUtils.IsoelectricPoint.html
 
+mod detailed;
+pub use detailed::*;
+
 /// All 20 standard amino acids, in the same order as the mass tables.
 const STANDARD: &[u8; 20] = b"ACDEFGHIKLMNPQRSTVWY";
 const NAMES: [&str; 20] = [

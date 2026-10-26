@@ -5,8 +5,9 @@
 //! from the biological strand used to extract and translate a feature.
 use crate::Feature;
 use std::borrow::Cow;
+mod cleavage;
 mod segments;
-pub use segments::FeatureDisplaySegment;
+pub use segments::{FeatureDisplaySegment, FeatureSegmentStyle};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FeatureDirection {
@@ -56,6 +57,7 @@ impl Feature {
         // A whole-document reverse complement reverses the displayed arrows too.
         // Preserve all unrelated text, formatting, and unknown metadata.
         let note_direction = self.display_note("direction").map(str::to_owned);
+        self.remap_cleavage(|site| length.checked_sub(site));
         self.reverse_display_segments(length);
         for (key, value) in &mut self.qualifiers {
             if key == "snapgene_readingFrame"
@@ -89,7 +91,7 @@ impl Feature {
     /// Interpret only a complete, recognized terminal note, never arbitrary
     /// prose containing words such as "sequence:" or "color:". Unknown fields
     /// leave the entire note available as ordinary annotation text.
-    fn display_note(&self, key: &str) -> Option<&str> {
+    fn parsed_display_note(&self) -> Option<Vec<(&str, &str)>> {
         let note = self
             .qualifiers
             .iter()
@@ -97,11 +99,11 @@ impl Feature {
             .find(|(k, _)| k == "note")?
             .1
             .as_deref()?;
-        let mut result = None;
-        let mut recognized = false;
+        let (note, _) = cleavage::split(note)?;
+        let mut fields = Vec::new();
         for item in note.split(';').map(str::trim).filter(|s| !s.is_empty()) {
             if item == "5' phosphorylated" && self.kind == "primer_bind" {
-                recognized = true;
+                fields.push(("5' phosphorylated", ""));
                 continue;
             }
             let (field, value) = item.split_once(':')?;
@@ -126,16 +128,124 @@ impl Feature {
             if !valid {
                 return None;
             }
-            recognized = true;
-            if field == key {
-                // Conflicting duplicate fields must not choose an arbitrary value.
-                if result.is_some_and(|previous| previous != value) {
-                    return None;
-                }
-                result = Some(value);
+            // Conflicting duplicates invalidate the whole note, including its
+            // other fields; a malformed sequence must not authorize its color.
+            if fields
+                .iter()
+                .any(|(key, previous)| *key == field && *previous != value)
+            {
+                return None;
             }
+            fields.push((field, value));
         }
-        recognized.then_some(result).flatten()
+        (!fields.is_empty()).then_some(fields)
+    }
+    fn display_note(&self, key: &str) -> Option<&str> {
+        self.parsed_display_note()?
+            .into_iter()
+            .find_map(|(field, value)| (field == key).then_some(value))
+    }
+
+    /// The recognized terminal display note, including single-span styles,
+    /// primers and cleavage-only notes. Writers keep it after prose/review notes.
+    pub fn terminal_display_note(&self) -> Option<&str> {
+        if self.segment_metadata().is_none()
+            && self.parsed_display_note().is_none()
+            && self.display_cleavage_sites().is_empty()
+        {
+            return None;
+        }
+        self.qualifiers
+            .iter()
+            .rev()
+            .find(|(key, _)| key == "note")?
+            .1
+            .as_deref()
+    }
+
+    /// Published GenBank display vocabulary. Source qualifiers are untouched.
+    /// Independent primer sequences are never inferred from binding coordinates.
+    pub fn interchange_display_note(&self) -> Option<String> {
+        self.interchange_display_note_at(0)
+    }
+
+    /// As above, with the document feature index used when a named segment
+    /// requires a concrete color even though no source color was recorded.
+    pub fn interchange_display_note_at(&self, index: usize) -> Option<String> {
+        if let Some(note) = self.segment_display_note() {
+            return Some(note.to_owned());
+        }
+        if self.kind == "primer_bind" {
+            if self.qualifier("primer_sequence").is_none()
+                && self.qualifier("snapgene_color").is_none()
+                && self.qualifier("snapgene_dateAdded").is_none()
+                && let Some(note) = self.terminal_display_note()
+            {
+                return Some(note.to_owned());
+            }
+            let mut fields = Vec::new();
+            let color = self.display_color_rgb().and_then(|rgb| match rgb {
+                0x000000 => Some("black"),
+                0xff0000 => Some("red"),
+                0xffa500 => Some("orange"),
+                0x008000 => Some("green"),
+                0x0000ff => Some("blue"),
+                0x800080 => Some("purple"),
+                0x808080 => Some("gray"),
+                _ => None,
+            });
+            if let Some(color) = color {
+                fields.push(format!("color: {color}"));
+            }
+            if let Some(sequence) = self.primer_sequence() {
+                fields.push(format!("sequence: {sequence}"));
+            }
+            if let Some(date) = self.primer_added_date().filter(|date| {
+                date.len() == 10
+                    && date.bytes().enumerate().all(|(i, b)| {
+                        if i == 4 || i == 7 {
+                            b == b'-'
+                        } else {
+                            b.is_ascii_digit()
+                        }
+                    })
+            }) {
+                fields.push(format!("added: {date}"));
+            }
+            if self.display_note("5' phosphorylated").is_some() {
+                fields.push("5' phosphorylated".into());
+            }
+            return (!fields.is_empty()).then(|| fields.join("; "));
+        }
+        if let Some(note) = self.terminal_display_note() {
+            return Some(note.to_owned());
+        }
+        if let Some(note) = self.named_segment_export_note(index) {
+            return Some(note);
+        }
+        let mut fields = Vec::new();
+        if let Some(color) = self.display_color_rgb() {
+            fields.push(format!("color: #{color:06x}"));
+        }
+        if let Some(direction) = self
+            .display_direction()
+            .or_else(|| {
+                (!fields.is_empty()).then_some(if self.reverse {
+                    FeatureDirection::Reverse
+                } else {
+                    FeatureDirection::Forward
+                })
+            })
+            .and_then(|direction| match direction {
+                FeatureDirection::Forward => Some("RIGHT"),
+                FeatureDirection::Reverse => Some("LEFT"),
+                FeatureDirection::Bidirectional => Some("BOTH"),
+                _ => None,
+            })
+        {
+            fields.push(format!("direction: {direction}"));
+        }
+        (!fields.is_empty()).then(|| fields.join("; "))
     }
 
     pub fn display_color_rgb(&self) -> Option<u32> {
@@ -148,7 +258,29 @@ impl Feature {
             })
     }
 
+    /// Effective annotation color. Uncolored primers use PopGene's fixed purple
+    /// display default, so native packet regrouping cannot change their appearance.
+    /// This is a view fallback, not a recorded primer base-color value.
+    /// Other features use their document index, never a filtered-list index.
+    /// Recorded feature/segment colors take precedence and remain unmodified.
+    pub fn effective_color_rgb(&self, index: usize) -> u32 {
+        self.display_color_rgb().unwrap_or_else(|| {
+            if self.kind == "primer_bind" {
+                0xb985d0
+            } else {
+                [0x4cc7aa, 0x65abe1, 0xe2ac64, 0xb985d0, 0x5bc7d2, 0xe38299][index % 6]
+            }
+        })
+    }
+
     pub fn display_direction(&self) -> Option<FeatureDirection> {
+        if self
+            .location
+            .as_ref()
+            .is_some_and(|location| location.uniform_projection().is_none())
+        {
+            return Some(FeatureDirection::Nondirectional);
+        }
         if let Some(value) = self.qualifier("snapgene_directionality") {
             return match value {
                 "" | "0" => Some(FeatureDirection::Nondirectional),
@@ -209,6 +341,7 @@ mod tests {
 
     fn feature(kind: &str, notes: &[&str]) -> Feature {
         Feature {
+            location: None,
             id: 1,
             label: "test".into(),
             kind: kind.into(),
@@ -237,6 +370,57 @@ mod tests {
         assert_eq!(f.primer_added_date(), Some("2026-10-21"));
         assert_eq!(f.primer_melting_temperature(), None);
         assert_eq!(f, original);
+    }
+
+    #[test]
+    fn unrecorded_primer_color_is_index_independent_without_creating_metadata() {
+        let primer = feature("primer_bind", &["sequence: ACGT"]);
+        let before = primer.clone();
+        for index in [0, 1, 2, 3, 5, 6, 99, usize::MAX] {
+            assert_eq!(primer.display_color_rgb(), None);
+            assert_eq!(primer.effective_color_rgb(index), 0xb985d0);
+        }
+        assert_eq!(
+            primer.interchange_display_note().as_deref(),
+            Some("sequence: ACGT")
+        );
+        assert_eq!(primer, before);
+        let annotation = feature("misc_feature", &[]);
+        assert_eq!(annotation.effective_color_rgb(0), 0x4cc7aa);
+        assert_eq!(annotation.effective_color_rgb(1), 0x65abe1);
+    }
+
+    #[test]
+    fn recorded_primer_colors_override_the_display_default_without_reinterpretation() {
+        for (name, color) in [
+            ("black", 0x000000),
+            ("red", 0xff0000),
+            ("orange", 0xffa500),
+            ("green", 0x008000),
+            ("blue", 0x0000ff),
+            ("purple", 0x800080),
+            ("gray", 0x808080),
+            ("#123456", 0x123456),
+        ] {
+            let mut primer = feature("primer_bind", &[]);
+            primer
+                .qualifiers
+                .push(("snapgene_color".into(), Some(name.into())));
+            let before = primer.clone();
+            assert_eq!(primer.display_color_rgb(), Some(color));
+            assert_eq!(primer.effective_color_rgb(0), color);
+            assert_eq!(primer.effective_color_rgb(7), color);
+            assert_eq!(primer, before);
+        }
+        for value in ["", "unknown-native-color"] {
+            let mut primer = feature("primer_bind", &[]);
+            primer
+                .qualifiers
+                .push(("snapgene_color".into(), Some(value.into())));
+            assert_eq!(primer.display_color_rgb(), None);
+            assert_eq!(primer.effective_color_rgb(2), 0xb985d0);
+            assert_eq!(primer.qualifier("snapgene_color"), Some(value));
+        }
     }
 
     #[test]

@@ -27,6 +27,7 @@ fn main() {
     }
     let mut protein = Document::new_typed("protein", "ACGMKWVTF*XZ", Molecule::Protein).unwrap();
     protein.features.push(Feature {
+        location: None,
         id: 1,
         label: "region".into(),
         kind: "Region".into(),

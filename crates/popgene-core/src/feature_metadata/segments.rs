@@ -2,16 +2,25 @@
 use super::{Feature, FeatureDirection, rgb_color};
 use crate::Segment;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FeatureSegmentStyle {
+    Filled,
+    Line,
+    Gap,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeatureDisplaySegment {
     pub range: Segment,
     pub color_rgb: Option<u32>,
     pub name: Option<String>,
+    pub style: FeatureSegmentStyle,
 }
 
 pub(super) struct SegmentMetadata {
     pub direction: Option<FeatureDirection>,
     pub spans: Vec<FeatureDisplaySegment>,
+    pub cleavage_sites: Vec<usize>,
 }
 
 fn number(input: &str) -> Option<(usize, &str)> {
@@ -21,7 +30,7 @@ fn number(input: &str) -> Option<(usize, &str)> {
     Some((input[..length].parse().ok()?, &input[length..]))
 }
 
-fn entry(input: &str) -> Option<(Segment, u32, &str)> {
+fn entry(input: &str) -> Option<(Segment, Option<u32>, FeatureSegmentStyle, &str)> {
     let (start, rest) = number(input)?;
     let (end, rest) = number(rest.trim_start().strip_prefix("..")?)?;
     if start == 0 || start > end || end > crate::MAX_BASES {
@@ -42,7 +51,16 @@ fn entry(input: &str) -> Option<(Segment, u32, &str)> {
             start: start - 1,
             end,
         },
-        rgb_color(color)?,
+        if color == "#------" {
+            None
+        } else {
+            Some(rgb_color(color)?)
+        },
+        if color == "#------" {
+            FeatureSegmentStyle::Line
+        } else {
+            FeatureSegmentStyle::Filled
+        },
         &rest[7..],
     ))
 }
@@ -63,9 +81,10 @@ fn ordered_runs(parts: impl IntoIterator<Item = Segment>) -> Vec<Segment> {
 
 fn parse(note: &str) -> Option<SegmentMetadata> {
     // A malformed or excessively large display note stays ordinary qualifier text.
-    if note.len() > 1024 * 1024 || note.contains("Cleavage site") {
+    if note.len() > 1024 * 1024 {
         return None;
     }
+    let (note, cleavage_sites) = super::cleavage::split(note)?;
     let (direction, rest) = [
         (
             "This forward directional feature has ",
@@ -116,7 +135,7 @@ fn parse(note: &str) -> Option<SegmentMetadata> {
             return None;
         }
         let end = rows.get(index + 1).map_or(rest.len(), |row| row.0);
-        let (range, color, name) = entry(&rest[colon + 1..end])?;
+        let (range, color, style, name) = entry(&rest[colon + 1..end])?;
         let name = name.trim();
         let name = if name.is_empty() {
             None
@@ -130,11 +149,16 @@ fn parse(note: &str) -> Option<SegmentMetadata> {
         };
         spans.push(FeatureDisplaySegment {
             range,
-            color_rgb: Some(color),
+            color_rgb: color,
             name,
+            style,
         });
     }
-    Some(SegmentMetadata { direction, spans })
+    Some(SegmentMetadata {
+        direction,
+        spans,
+        cleavage_sites,
+    })
 }
 
 fn note(metadata: &SegmentMetadata) -> String {
@@ -150,20 +174,117 @@ fn note(metadata: &SegmentMetadata) -> String {
     );
     for (index, span) in metadata.spans.iter().enumerate() {
         result.push_str(&format!(
-            " {}: {} .. {} / #{:06x}",
+            " {}: {} .. {} / {}",
             index + 1,
             span.range.start + 1,
             span.range.end,
-            span.color_rgb.unwrap()
+            if span.style == FeatureSegmentStyle::Line {
+                "#------".into()
+            } else {
+                format!("#{:06x}", span.color_rgb.unwrap_or(0x5b9bd5))
+            }
         ));
         if let Some(name) = &span.name {
             result.push_str(&format!(" / {name}"));
         }
     }
+    super::cleavage::suffix(&mut result, &metadata.cleavage_sites);
     result
 }
 
 impl Feature {
+    pub(super) fn named_segment_export_note(&self, index: usize) -> Option<String> {
+        let mut spans = self.display_segments();
+        for span in &mut spans {
+            if span.style == FeatureSegmentStyle::Filled && span.color_rgb.is_none() {
+                span.color_rgb = Some(self.effective_color_rgb(index));
+            }
+        }
+        spans.iter().any(|span| span.name.is_some()).then(|| {
+            note(&SegmentMetadata {
+                direction: Some(self.display_direction().unwrap_or(if self.reverse {
+                    FeatureDirection::Reverse
+                } else {
+                    FeatureDirection::Forward
+                })),
+                spans,
+                cleavage_sites: self.display_cleavage_sites(),
+            })
+        })
+    }
+    /// Native gap segments are visual connectors, excluded from biological parts.
+    pub fn display_gaps(&self) -> Vec<FeatureDisplaySegment> {
+        self.qualifiers
+            .iter()
+            .filter(|(key, _)| key == "snapgene_gap")
+            .filter_map(|(_, value)| {
+                let (range, color, _, rest) = entry(value.as_deref()?)?;
+                let rest = rest.trim();
+                let name = if rest.is_empty() {
+                    None
+                } else {
+                    Some(rest.strip_prefix('/')?.trim().to_owned())
+                };
+                Some(FeatureDisplaySegment {
+                    range,
+                    color_rgb: color,
+                    name,
+                    style: FeatureSegmentStyle::Gap,
+                })
+            })
+            .collect()
+    }
+    fn map_gaps(&mut self, map: impl Fn(&Segment) -> Vec<Segment>) {
+        let gaps = self.display_gaps();
+        if gaps.is_empty() {
+            return;
+        }
+        self.qualifiers.retain(|(key, _)| key != "snapgene_gap");
+        for gap in gaps {
+            for range in map(&gap.range) {
+                let color = gap
+                    .color_rgb
+                    .map_or_else(|| "#------".into(), |v| format!("#{v:06x}"));
+                let mut value = format!("{} .. {} / {color}", range.start + 1, range.end);
+                if let Some(name) = &gap.name {
+                    value.push_str(&format!(" / {name}"));
+                }
+                self.qualifiers.push(("snapgene_gap".into(), Some(value)));
+            }
+        }
+    }
+    /// Project display subdivisions with their biological feature. Call before
+    /// changing the feature's parts.
+    pub fn project_display_segments(&mut self, map: impl Fn(&Segment) -> Vec<Segment>) {
+        self.project_cleavage(&map);
+        self.map_gaps(&map);
+        let Some(mut metadata) = self.segment_metadata() else {
+            return;
+        };
+        metadata.spans = metadata
+            .spans
+            .into_iter()
+            .flat_map(|span| {
+                map(&span.range)
+                    .into_iter()
+                    .map(move |range| FeatureDisplaySegment {
+                        range,
+                        color_rgb: span.color_rgb,
+                        name: span.name.clone(),
+                        style: span.style,
+                    })
+            })
+            .collect();
+        if let Some((_, value)) = self
+            .qualifiers
+            .iter_mut()
+            .rev()
+            .find(|(key, _)| key == "note")
+        {
+            *value = Some(note(&metadata));
+        }
+    }
+
     /// The validated terminal conventional note, for writers that need to keep
     /// it last when inserting a separate annotation-review note.
     pub fn segment_display_note(&self) -> Option<&str> {
@@ -203,6 +324,11 @@ impl Feature {
             .map(|range| FeatureDisplaySegment {
                 range: range.clone(),
                 color_rgb: color,
+                style: if self.display_note("color") == Some("#------") {
+                    FeatureSegmentStyle::Line
+                } else {
+                    FeatureSegmentStyle::Filled
+                },
                 name: if self.parts.len() == 1 {
                     self.qualifier("segment_name").map(str::to_owned)
                 } else {
@@ -213,6 +339,16 @@ impl Feature {
     }
 
     pub(super) fn reverse_display_segments(&mut self, length: usize) {
+        self.map_gaps(|p| {
+            if p.end <= length {
+                vec![Segment {
+                    start: length - p.end,
+                    end: length - p.start,
+                }]
+            } else {
+                vec![]
+            }
+        });
         let Some(mut metadata) = self.segment_metadata() else {
             return;
         };
@@ -232,6 +368,34 @@ impl Feature {
     }
 
     pub(crate) fn shift_display_segments(&mut self, start: usize, end: usize, replacement: usize) {
+        let delta = replacement as isize - (end - start) as isize;
+        self.map_gaps(|p| {
+            let a = if p.start >= end {
+                p.start.checked_add_signed(delta)
+            } else {
+                Some(p.start.min(start))
+            };
+            let b = if p.end <= start {
+                Some(p.end)
+            } else if p.end >= end {
+                p.end.checked_add_signed(delta)
+            } else {
+                start.checked_add(replacement)
+            };
+            match (a, b) {
+                (Some(start), Some(end)) if start < end => vec![Segment { start, end }],
+                _ => vec![],
+            }
+        });
+        self.remap_cleavage(|site| {
+            if site <= start {
+                Some(site)
+            } else if site >= end {
+                site.checked_add_signed(delta)
+            } else {
+                None
+            }
+        });
         let Some(mut metadata) = self.segment_metadata() else {
             return;
         };
@@ -278,7 +442,7 @@ impl Feature {
 mod tests {
     use super::*;
     fn sample() -> Feature {
-        Feature { id: 1, label: "split".into(), kind: "misc_feature".into(), parts: vec![Segment { start: 100, end: 400 }], reverse: false, edited: false,
+        Feature { location: None, id: 1, label: "split".into(), kind: "misc_feature".into(), parts: vec![Segment { start: 100, end: 400 }], reverse: false, edited: false,
             qualifiers: vec![("note".into(), Some("This forward directional feature has 2 segments: 1: 101 .. 250 / #ff0000 / Red domain 2: 251 .. 400 / #0000ff / Blue domain".into()))] }
     }
     #[test]
@@ -313,7 +477,7 @@ mod tests {
         }
     }
     #[test]
-    fn origin_order_overlaps_and_unsupported_cleavage_notes_are_not_reinterpreted() {
+    fn origin_order_overlaps_and_cleavage_notes_remain_coordinate_safe() {
         let mut feature = sample();
         feature.parts = vec![
             Segment {
@@ -343,7 +507,8 @@ mod tests {
             .as_mut()
             .unwrap()
             .push_str(" Cleavage site after base 300");
-        assert!(feature.segment_metadata().is_none());
+        assert!(feature.segment_metadata().is_some());
+        assert_eq!(feature.display_cleavage_sites(), vec![300]);
     }
     #[test]
     fn reverse_and_insert_keep_names_attached_to_their_bases() {

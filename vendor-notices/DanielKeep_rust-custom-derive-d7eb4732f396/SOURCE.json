@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/DanielKeep/rust-custom-derive",
+  "revision": "d7eb4732f396e7c69cbe9595989f80a819724406",
+  "packages": [
+    "newtype_derive-0.1.6"
+  ],
+  "files": [
+    {
+      "path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/DanielKeep/rust-custom-derive/d7eb4732f396e7c69cbe9595989f80a819724406/LICENSE",
+      "sha256": "b8c0bde1bc54ed76d79261bbeec97a4bf8041818a28af1a2aeceb3257656dbfe"
+    }
+  ],
+  "source_verification": {
+    "tag": "v0.1.6",
+    "manifest_version": "0.1.6",
+    "lib_rs_equal_after_crlf_normalization": true
+  }
+}

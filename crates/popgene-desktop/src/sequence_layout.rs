@@ -4,11 +4,75 @@
 //! Calculated CDS translations are projected from their recorded reading frame.
 //! Complete reading-frame codons are calculated only for visible rows.
 use popgene_core::translation::translate_cds;
-use popgene_core::{Document, FeatureDisplaySegment, Molecule, Segment};
+use popgene_core::{Document, FeatureDisplaySegment, FeatureSegmentStyle, Molecule, Segment};
 
 /// Continuous symbol spacing, excluding the view's left/right gutters.
 pub fn base_x(column: usize, cell_width: f32) -> f32 {
     column as f32 * cell_width
+}
+
+/// Sparse, disjoint color runs. The last imported range wins overlapping colors
+/// on the same strand. Building once avoids scanning up to100k ranges per glyph.
+#[derive(Default)]
+pub struct SequenceColorIndex {
+    strands: [Vec<(Segment, u32)>; 2],
+}
+impl SequenceColorIndex {
+    pub fn new(document: &Document) -> Self {
+        let mut result = Self::default();
+        for strand in 0..2 {
+            let mut events = vec![];
+            for (index, color) in document.sequence_colors.iter().enumerate() {
+                if color.reverse == (strand == 1) {
+                    events.push((color.range.start, true, index));
+                    events.push((color.range.end, false, index));
+                }
+            }
+            events.sort_unstable();
+            let mut active = std::collections::BTreeSet::new();
+            let mut i = 0;
+            while i < events.len() {
+                let coordinate = events[i].0;
+                while i < events.len() && events[i].0 == coordinate {
+                    let (_, start, index) = events[i];
+                    if start {
+                        active.insert(index);
+                    } else {
+                        active.remove(&index);
+                    }
+                    i += 1;
+                }
+                if let Some(&index) = active.last()
+                    && let Some(&(end, _, _)) = events.get(i)
+                    && coordinate < end
+                {
+                    let color = document.sequence_colors[index].color_rgb;
+                    if let Some((last, previous)) = result.strands[strand].last_mut()
+                        && last.end == coordinate
+                        && *previous == color
+                    {
+                        last.end = end;
+                    } else {
+                        result.strands[strand].push((
+                            Segment {
+                                start: coordinate,
+                                end,
+                            },
+                            color,
+                        ));
+                    }
+                }
+            }
+        }
+        result
+    }
+    pub fn color(&self, position: usize, reverse: bool) -> Option<u32> {
+        let runs = &self.strands[usize::from(reverse)];
+        let index = runs.partition_point(|(range, _)| range.end <= position);
+        runs.get(index)
+            .filter(|(range, _)| range.start <= position)
+            .map(|(_, color)| *color)
+    }
 }
 
 /// Hit-test a symbol; gutters and the space after the final symbol are not bases.
@@ -53,6 +117,80 @@ pub fn complement(base: u8, molecule: Molecule) -> u8 {
     }
 }
 
+/// Actual opposite-strand coverage projected onto the top sequence axis.
+pub fn opposite_span(document: &Document) -> Segment {
+    let n = document.sequence.len();
+    if document.single_stranded || document.molecule == Molecule::Protein {
+        return Segment { start: 0, end: 0 };
+    }
+    if let Some(ends) = &document.duplex_ends {
+        let geometry = ends.geometry(n);
+        Segment {
+            start: geometry
+                .bottom
+                .start
+                .saturating_sub(geometry.top.start)
+                .min(n),
+            end: geometry
+                .bottom
+                .end
+                .saturating_sub(geometry.top.start)
+                .min(n),
+        }
+    } else {
+        Segment { start: 0, end: n }
+    }
+}
+/// Only actual lower residues are returned for an explicitly stored duplex.
+pub fn opposite_base(document: &Document, top_position: usize) -> Option<u8> {
+    let span = opposite_span(document);
+    if !(span.start..span.end).contains(&top_position) {
+        return None;
+    }
+    if let Some(ends) = &document.duplex_ends {
+        let geometry = ends.geometry(document.sequence.len());
+        let axis = geometry.top.start + top_position;
+        ends.opposite_sequence
+            .as_bytes()
+            .get(geometry.bottom.end - 1 - axis)
+            .copied()
+    } else {
+        document
+            .sequence
+            .as_bytes()
+            .get(top_position)
+            .map(|base| complement(*base, document.molecule))
+    }
+}
+pub fn opposite_quality(document: &Document, top_position: usize) -> Option<u8> {
+    let span = opposite_span(document);
+    if !(span.start..span.end).contains(&top_position) {
+        return None;
+    }
+    let position = if let Some(ends) = &document.duplex_ends {
+        let geometry = ends.geometry(document.sequence.len());
+        geometry.bottom.end - 1 - (geometry.top.start + top_position)
+    } else {
+        document.sequence.len() - 1 - top_position
+    };
+    document
+        .opposite_sequence_qualities
+        .as_ref()?
+        .get(position)
+        .copied()
+        .flatten()
+}
+pub fn duplex_display_notice(document: &Document) -> Option<String> {
+    let ends = document.duplex_ends.as_ref()?;
+    let geometry = ends.geometry(document.sequence.len());
+    Some(format!(
+        "Top-strand coordinates shown. Physical duplex extent: {} positions; {} bottom-only residues and {} full-extent annotations are outside this view. Blank lower cells have no opposite strand. Use Analyze → Full duplex strands & annotations to inspect both complete strands.",
+        geometry.extent,
+        geometry.extent - document.sequence.len(),
+        document.duplex_annotations.features.len()
+    ))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeatureSpan {
     pub feature_index: usize,
@@ -68,6 +206,9 @@ pub struct FeatureSpan {
     pub lane: usize,
     pub color_rgb: Option<u32>,
     pub segment_name: Option<String>,
+    pub style: FeatureSegmentStyle,
+    /// Interbase boundaries relative to the row, not symbols to translate.
+    pub cleavage_sites: Vec<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -85,6 +226,8 @@ pub struct TranslationGlyph {
     /// Absolute forward coordinates in coding order, including joined codons.
     pub codon_positions: [usize; 3],
     pub split_codon: bool,
+    pub nucleotide_count: usize,
+    pub exception: bool,
 }
 
 #[derive(Clone, Default, Debug)]
@@ -113,6 +256,8 @@ struct IndexedPart {
     end: usize,
     /// Forward concatenation offset, before applying the feature's strand.
     offset: usize,
+    gap_index: Option<usize>,
+    point_boundary: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -120,6 +265,8 @@ struct Translation {
     amino_acids: Vec<u8>,
     phase: usize,
     genetic_code: u16,
+    exception_codons: Vec<usize>,
+    terminal_partial_stop: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -130,6 +277,8 @@ struct IndexedFeature {
     parts: Vec<Segment>,
     /// Forward concatenation offset plus styling, preserving repeated locations.
     display_parts: Vec<(usize, FeatureDisplaySegment)>,
+    display_gaps: Vec<FeatureDisplaySegment>,
+    cleavage_sites: Vec<usize>,
     offsets: Vec<usize>,
     length: usize,
     translation: Option<Translation>,
@@ -149,6 +298,14 @@ pub struct SequenceLayout {
 
 impl SequenceLayout {
     pub fn new(document: &Document) -> Self {
+        Self::build(document, true)
+    }
+    /// Build only annotation geometry, avoiding synthetic sequence translations
+    /// when the caller displays separate physical strands on a duplex axis.
+    pub fn annotations_only(document: &Document) -> Self {
+        Self::build(document, false)
+    }
+    fn build(document: &Document, calculate_translations: bool) -> Self {
         let mut result = Self {
             document_length: document.sequence.len(),
             ..Self::default()
@@ -170,11 +327,50 @@ impl SequenceLayout {
                         start: part.start,
                         end: part.end,
                         offset: length,
+                        gap_index: None,
+                        point_boundary: None,
                     });
                     length += part.end - part.start;
                 }
             }
-            let translation = if valid
+            let display_gaps = feature
+                .display_gaps()
+                .into_iter()
+                .filter(|span| {
+                    span.range.start < span.range.end && span.range.end <= result.document_length
+                })
+                .collect::<Vec<_>>();
+            if valid {
+                for (gap_index, gap) in display_gaps.iter().enumerate() {
+                    result.parts.push(IndexedPart {
+                        feature_index,
+                        part_index: feature.parts.len() + gap_index,
+                        start: gap.range.start,
+                        end: gap.range.end,
+                        offset: 0,
+                        gap_index: Some(gap_index),
+                        point_boundary: None,
+                    });
+                }
+            }
+            if let Some(location) = &feature.location {
+                for boundary in location.local_boundaries() {
+                    if boundary > 0 && boundary <= result.document_length {
+                        let at = boundary.min(result.document_length - 1);
+                        result.parts.push(IndexedPart {
+                            feature_index,
+                            part_index: usize::MAX,
+                            start: at,
+                            end: at + 1,
+                            offset: 0,
+                            gap_index: None,
+                            point_boundary: Some(boundary),
+                        });
+                    }
+                }
+            }
+            let translation = if calculate_translations
+                && valid
                 && document.molecule != Molecule::Protein
                 && feature.kind.eq_ignore_ascii_case("CDS")
             {
@@ -191,6 +387,8 @@ impl SequenceLayout {
                         amino_acids: translation.amino_acids,
                         phase: translation.phase,
                         genetic_code: translation.genetic_code,
+                        exception_codons: translation.exception_codons,
+                        terminal_partial_stop: translation.terminal_partial_stop,
                     }),
                     Err(error) => {
                         result.omitted_translations += 1;
@@ -220,6 +418,8 @@ impl SequenceLayout {
                     })
                     .collect(),
                 offsets,
+                display_gaps,
+                cleavage_sites: feature.display_cleavage_sites(),
                 length,
                 translation,
             });
@@ -349,7 +549,10 @@ impl SequenceLayout {
             } else {
                 show_features
             };
-            let visible_translation = show_translations && feature.translation.is_some();
+            let visible_translation = show_translations
+                && feature.translation.is_some()
+                && part.gap_index.is_none()
+                && part.point_boundary.is_none();
             if !visible_span && !visible_translation {
                 continue;
             }
@@ -368,7 +571,47 @@ impl SequenceLayout {
             if visible_translation && !result.translation_lanes.contains(&lane) {
                 result.translation_lanes.push(lane);
             }
-            if content && visible_span {
+            if content
+                && visible_span
+                && let Some(boundary) = part.point_boundary
+            {
+                result.spans.push(FeatureSpan {
+                    feature_index: part.feature_index,
+                    feature_id: feature.id,
+                    start: boundary - start,
+                    end: boundary - start,
+                    reverse: feature.reverse,
+                    continued_left: true,
+                    continued_right: true,
+                    lane,
+                    color_rgb: None,
+                    segment_name: None,
+                    style: FeatureSegmentStyle::Line,
+                    cleavage_sites: vec![boundary - start],
+                });
+            }
+            if content
+                && visible_span
+                && let Some(gap_index) = part.gap_index
+            {
+                let gap = &feature.display_gaps[gap_index];
+                result.spans.push(FeatureSpan {
+                    feature_index: part.feature_index,
+                    feature_id: feature.id,
+                    start: left - start,
+                    end: right - start,
+                    reverse: feature.reverse,
+                    continued_left: true,
+                    continued_right: true,
+                    lane,
+                    color_rgb: gap.color_rgb,
+                    segment_name: gap.name.clone(),
+                    style: FeatureSegmentStyle::Gap,
+                    cleavage_sites: vec![],
+                });
+            }
+            if content && visible_span && part.gap_index.is_none() && part.point_boundary.is_none()
+            {
                 // Match occurrences in the ordered concatenation, not just
                 // genomic coordinates: joined parts may overlap or repeat.
                 let visible_offset_start = part.offset + left - part.start;
@@ -394,11 +637,20 @@ impl SequenceLayout {
                         lane,
                         color_rgb: display.color_rgb,
                         segment_name: display.name.clone(),
+                        style: display.style,
+                        cleavage_sites: feature
+                            .cleavage_sites
+                            .iter()
+                            .filter(|&&p| p >= display_left && p <= display_right)
+                            .map(|p| p - start)
+                            .collect(),
                     });
                 }
             }
             if content
                 && show_translations
+                && part.gap_index.is_none()
+                && part.point_boundary.is_none()
                 && let Some(translation) = &feature.translation
             {
                 for coordinate in left..right {
@@ -412,24 +664,33 @@ impl SequenceLayout {
                         continue;
                     }
                     let in_cds = coding_offset - translation.phase;
-                    if in_cds % 3 != 1 {
+                    if in_cds % 3 != 1
+                        && !(translation.terminal_partial_stop
+                            && in_cds % 3 == 0
+                            && coding_offset + 1 == feature.length)
+                    {
                         continue;
                     }
                     let Some(&amino_acid) = translation.amino_acids.get(in_cds / 3) else {
                         continue;
                     };
-                    let Some(before) = feature.coordinate(coding_offset - 1) else {
-                        continue;
-                    };
-                    let Some(after) = feature.coordinate(coding_offset + 1) else {
-                        continue;
-                    };
+                    let codon_offset = translation.phase + (in_cds / 3) * 3;
+                    let nucleotide_count = (feature.length - codon_offset).min(3);
+                    let codon_positions = std::array::from_fn(|index| {
+                        feature
+                            .coordinate(codon_offset + index.min(nucleotide_count - 1))
+                            .unwrap()
+                    });
+                    let before = codon_positions[0];
+                    let after = codon_positions[2];
                     // Never stretch a translation across an intron or circular origin.
-                    let contiguous = if feature.reverse {
-                        before == coordinate + 1 && after.checked_add(1) == Some(coordinate)
-                    } else {
-                        before.checked_add(1) == Some(coordinate) && after == coordinate + 1
-                    };
+                    let contiguous = codon_positions[..nucleotide_count].windows(2).all(|pair| {
+                        if feature.reverse {
+                            pair[1].checked_add(1) == Some(pair[0])
+                        } else {
+                            pair[0].checked_add(1) == Some(pair[1])
+                        }
+                    });
                     result.translations.push(TranslationGlyph {
                         feature_index: part.feature_index,
                         feature_id: feature.id,
@@ -447,7 +708,12 @@ impl SequenceLayout {
                         amino_acid: amino_acid as char,
                         lane,
                         genetic_code: translation.genetic_code,
-                        codon_positions: [before, coordinate, after],
+                        codon_positions,
+                        nucleotide_count,
+                        exception: translation
+                            .exception_codons
+                            .binary_search(&(in_cds / 3))
+                            .is_ok(),
                         split_codon: !contiguous,
                     });
                 }
@@ -485,6 +751,7 @@ mod tests {
 
     fn feature(id: u64, parts: &[(usize, usize)], reverse: bool) -> Feature {
         Feature {
+            location: None,
             id,
             label: format!("feature-{id}"),
             kind: "CDS".into(),
@@ -584,7 +851,7 @@ mod tests {
     }
 
     #[test]
-    fn uncached_genbank_cds_calculates_both_strands_and_reports_unsupported_code() {
+    fn uncached_genbank_cds_calculates_both_strands_and_additional_code() {
         let document = popgene_formats::import(
             "calculated-translations.gb",
             include_bytes!("../../../validation/fixtures/regression/calculated-translations.gb"),
@@ -607,9 +874,34 @@ mod tests {
         };
         assert_eq!(glyphs(0), vec![(1, 'M'), (4, 'K'), (7, '*')]);
         assert_eq!(glyphs(1), vec![(13, '*'), (16, 'K'), (19, 'M')]);
-        assert!(glyphs(2).is_empty());
-        assert_eq!(layout.omitted_translations, 1);
-        assert!(layout.translation_notices[0].contains("table 4 is unsupported"));
+        assert_eq!(glyphs(2), vec![(10, 'P')]);
+        assert_eq!(layout.omitted_translations, 0);
+        assert!(layout.translation_notices.is_empty());
+    }
+
+    #[test]
+    fn recoded_and_partial_stop_glyphs_preserve_actual_coordinates() {
+        for (sequence, location, center, count) in [("ATGT", "4", 3, 1), ("ATGTA", "4..5", 4, 2)] {
+            let mut document = Document::new("partial", sequence).unwrap();
+            let mut cds = feature(1, &[(0, sequence.len())], false);
+            cds.qualifiers.push((
+                "transl_except".into(),
+                Some(format!("(pos:{location},aa:TERM)")),
+            ));
+            document.features.push(cds);
+            let layout = SequenceLayout::new(&document);
+            let row = layout.row(0, sequence.len(), 4, true, false, true);
+            let stop = row
+                .translations
+                .iter()
+                .find(|glyph| glyph.amino_acid == '*')
+                .unwrap();
+            assert_eq!(
+                (stop.base, stop.nucleotide_count, stop.start, stop.end),
+                (center, count, 3, sequence.len())
+            );
+            assert!(stop.exception);
+        }
     }
 
     #[test]
@@ -777,5 +1069,89 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![2, 5]
         );
+    }
+    #[test]
+    fn annotation_line_gap_and_cleavage_styling_does_not_add_translated_bases() {
+        let mut f = feature(1, &[(0, 6), (9, 15)], false);
+        f.qualifiers.push(("note".into(),Some("This forward directional feature has 2 segments: 1: 1..6 / #------ / first 2: 10..15 / #ff0000 / second Cleavage site after base 3".into())));
+        f.qualifiers
+            .push(("snapgene_gap".into(), Some("7..9 / #777777".into())));
+        let d = document(vec![f]);
+        let layout = SequenceLayout::new(&d);
+        let row = layout.row(0, 18, 4, true, true, true);
+        assert!(
+            row.spans
+                .iter()
+                .any(|s| s.style == FeatureSegmentStyle::Gap && s.start == 6 && s.end == 9)
+        );
+        assert!(
+            row.spans
+                .iter()
+                .any(|s| s.style == FeatureSegmentStyle::Line)
+        );
+        assert!(row.spans.iter().any(|s| s.cleavage_sites == vec![3]));
+        assert!(
+            row.translations
+                .iter()
+                .all(|g| g.codon_positions.iter().all(|p| !(6..9).contains(p)))
+        );
+    }
+    #[test]
+    fn between_and_alternative_points_are_visible_without_invented_bases() {
+        use popgene_core::FeatureLocation;
+        let mut f = feature(1, &[], false);
+        f.kind = "misc_feature".into();
+        f.location = Some(FeatureLocation::OneOf(vec![
+            FeatureLocation::Between { left: 2, right: 3 },
+            FeatureLocation::Between { left: 5, right: 6 },
+            FeatureLocation::Remote {
+                accession: "OTHER.1".into(),
+                location: Some(Box::new(FeatureLocation::Between { left: 8, right: 9 })),
+            },
+        ]));
+        let d = document(vec![f]);
+        let row = SequenceLayout::new(&d).row(0, 12, 4, true, true, true);
+        assert_eq!(row.spans.len(), 2);
+        assert!(row.spans.iter().all(|s| s.start == s.end));
+        assert_eq!(
+            row.spans
+                .iter()
+                .flat_map(|s| s.cleavage_sites.clone())
+                .collect::<Vec<_>>(),
+            vec![3, 6]
+        );
+        assert!(row.translations.is_empty());
+    }
+    #[test]
+    fn custom_sequence_colors_are_sparse_strand_specific_and_last_range_wins() {
+        use popgene_core::metadata::SequenceColor;
+        let mut d = document(vec![]);
+        d.sequence_colors = vec![
+            SequenceColor {
+                range: Segment { start: 1, end: 8 },
+                reverse: false,
+                color_rgb: 0xff0000,
+            },
+            SequenceColor {
+                range: Segment { start: 3, end: 5 },
+                reverse: false,
+                color_rgb: 0x00ff00,
+            },
+            SequenceColor {
+                range: Segment { start: 4, end: 7 },
+                reverse: true,
+                color_rgb: 0x0000ff,
+            },
+        ];
+        let colors = SequenceColorIndex::new(&d);
+        assert_eq!(colors.color(0, false), None);
+        assert_eq!(colors.color(1, false), Some(0xff0000));
+        assert_eq!(colors.color(4, false), Some(0x00ff00));
+        assert_eq!(colors.color(5, false), Some(0xff0000));
+        assert_eq!(colors.color(8, false), None);
+        assert_eq!(colors.color(4, true), Some(0x0000ff));
+        assert_eq!(colors.color(3, true), None);
+        assert_eq!(colors.color(7, true), None);
+        assert_eq!(colors.strands[0].len(), 3);
     }
 }

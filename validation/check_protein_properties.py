@@ -9,11 +9,10 @@ from collections import Counter
 import json
 from pathlib import Path
 import random
-import shutil
 import subprocess
-import tempfile
 
 import Bio
+from rust_probe import build_example
 from Bio.SeqUtils import molecular_weight
 from Bio.SeqUtils.IsoelectricPoint import IsoelectricPoint
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
@@ -30,33 +29,8 @@ def main():
              "D" * 100, "K" * 100, "D" * 100_000]
     cases += ["".join(rng.choices(STANDARD, k=n)) for n in (2, 3, 10, 50, 250, 5000)]
     unsupported = ["", "AX", "AB", "AZ", "AJ", "AU", "AO", "A*", "A*A", "ACGMKWVTF*XZ"]
-    source = f'#[path = {json.dumps(str(ROOT / "crates/popgene-core/src/protein.rs"))}]\nmod protein;\n' + r'''
-use std::io::{self, BufRead};
-fn n(v: Option<f64>) -> String { v.map_or("-".into(), |v| format!("{v:.12}")) }
-fn main() {
-    for line in io::stdin().lock().lines() {
-        let sequence = line.unwrap();
-        let p = protein::analyze(&sequence);
-        let c = p.composition.iter().map(|r| format!("{}:{}:{:.12}", r.symbol, r.count, r.percent)).collect::<Vec<_>>().join(",");
-        println!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            n(p.mass.map(|m| m.average_da)), n(p.mass.map(|m| m.monoisotopic_da)),
-            n(p.theoretical_pi), n(p.charge_at_ph7),
-            n(p.absorbance.map(|a| a.reduced_extinction as f64)),
-            n(p.absorbance.map(|a| a.paired_cysteine_extinction as f64)),
-            p.residue_count, p.stop_count, c);
-    }
-}
-'''
-    local = list((ROOT / ".tools/rustup/toolchains").glob("stable-*/bin/rustc"))
-    rustc = str(local[0]) if local else shutil.which("rustc") or "rustc"
-    with tempfile.TemporaryDirectory(prefix="popgene-protein-") as temporary:
-        temporary = Path(temporary)
-        rust = temporary / "probe.rs"
-        binary = temporary / "probe"
-        rust.write_text(source)
-        subprocess.run([rustc, "--edition=2024", "-O", str(rust), "-o", str(binary)], check=True)
-        rows = subprocess.run([str(binary)], input="\n".join(cases + unsupported) + "\n",
-                              text=True, capture_output=True, check=True).stdout.splitlines()
+    binary = build_example('popgene-core', 'protein_probe')
+    rows = subprocess.run([str(binary)], input="\n".join(cases + unsupported) + "\n", text=True, capture_output=True, check=True).stdout.splitlines()
     assert len(rows) == len(cases + unsupported)
     for sequence, row in zip(cases + unsupported, rows):
         values = row.split("\t")

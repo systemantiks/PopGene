@@ -1,6 +1,6 @@
 //! Bounded, read-only feature details shared by map and annotation lists.
 use gpui_kit::{prelude::*, *};
-use popgene_core::{Document, Feature, FeatureDirection, Molecule};
+use popgene_core::{Document, Feature, FeatureDirection, FeatureSegmentStyle, Molecule};
 use std::fmt::Write;
 
 pub(crate) fn truncate(value: &str, limit: usize) -> String {
@@ -53,10 +53,16 @@ fn segment_window(len: usize, active: Option<usize>) -> std::ops::Range<usize> {
     start..(start + 3).min(len)
 }
 pub(crate) fn feature_color(feature: &Feature, index: usize) -> Hsla {
-    if let Some(value) = feature.display_color_rgb() {
-        return rgb(value).into();
+    rgb(feature.effective_color_rgb(index)).into()
+}
+
+/// A Primers-table swatch reports recorded color, not the annotation fallback.
+pub(crate) fn table_swatch_rgb(feature: &Feature, index: usize, primers: bool) -> Option<u32> {
+    if primers {
+        feature.display_color_rgb()
+    } else {
+        Some(feature.effective_color_rgb(index))
     }
-    rgb([0x4cc7aa, 0x65abe1, 0xe2ac64, 0xb985d0, 0x5bc7d2, 0xe38299][index % 6]).into()
 }
 
 pub(crate) fn render_feature_card(
@@ -105,11 +111,48 @@ pub(crate) fn render_feature_card(
             doc.unit(),
             direction(feature, doc.molecule)
         )));
+    let cleavage = feature.display_cleavage_sites();
+    if !cleavage.is_empty() {
+        card = card.child(div().text_color(muted).child(format!(
+                "Cleavage after {}: {}",
+                if cleavage.len() == 1 { "base" } else { "bases" },
+                cleavage
+                    .iter()
+                    .take(12)
+                    .map(|p| number(*p))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )));
+    }
+    let gaps = feature.display_gaps();
+    if !gaps.is_empty() {
+        card = card.child(div().text_color(muted).child(format!(
+            "{} visual gap connector(s); excluded from feature sequence",
+            gaps.len()
+        )));
+    }
+    if display_segments
+        .iter()
+        .any(|s| s.style == FeatureSegmentStyle::Line)
+    {
+        card = card.child(
+            div()
+                .text_color(muted)
+                .child("Line appearance on indicated segments"),
+        );
+    }
     if wraps_origin(feature, doc.sequence.len()) {
         card = card.child(
             div()
                 .text_color(rgb(0x5bd8bf))
                 .child("Crosses the circular origin"),
+        );
+    }
+    if feature.location.is_some() || feature.parts.is_empty() {
+        card = card.child(
+            div()
+                .text_color(muted)
+                .child(truncate(&feature.location_label(), 220)),
         );
     }
     let mut ranges = div()
@@ -157,7 +200,11 @@ pub(crate) fn render_feature_card(
                         display
                             .color_rgb
                             .map(|value| format!(" · #{value:06x}"))
-                            .unwrap_or_default()
+                            .unwrap_or_else(|| if display.style == FeatureSegmentStyle::Line {
+                                " · line".into()
+                            } else {
+                                String::new()
+                            })
                     )),
             );
         }
@@ -265,6 +312,7 @@ pub(crate) fn detail_text(feature: &Feature, molecule: Molecule) -> String {
     if feature.edited {
         text.push_str("Sequence changed — review this annotation.\n");
     }
+    let _ = writeln!(text, "Location: {}", feature.location_label());
     text.push_str("\nSegments (1-based, inclusive; stored order)\n");
     for (index, part) in feature.parts.iter().enumerate() {
         let _ = writeln!(
@@ -321,7 +369,18 @@ pub(crate) fn detail_text(feature: &Feature, molecule: Molecule) -> String {
                 "Forward"
             }
         );
-        if let Some(tm) = feature.primer_melting_temperature() {
+        if let Some(tm) = feature
+            .qualifier("calculated_melting_temperature")
+            .filter(|value| value.parse::<f64>().is_ok_and(|v| v.is_finite()))
+        {
+            let _ = writeln!(text, "Calculated full-oligo Tm: {tm} °C");
+            if let Some(method) = feature.qualifier("primer_calculation_method") {
+                let _ = writeln!(text, "Method: {method}");
+            }
+            if let Some(reaction) = feature.qualifier("primer_reaction") {
+                let _ = writeln!(text, "Reaction parameters: {reaction}");
+            }
+        } else if let Some(tm) = feature.primer_melting_temperature() {
             let _ = writeln!(
                 text,
                 "Imported Tm: {tm} °C (source value; not recalculated)"
@@ -353,7 +412,10 @@ pub(crate) fn detail_text(feature: &Feature, molecule: Molecule) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{detail_text, direction, matches_query, segment_window, truncate, wraps_origin};
+    use super::{
+        detail_text, direction, matches_query, segment_window, table_swatch_rgb, truncate,
+        wraps_origin,
+    };
     use popgene_core::{Molecule, Segment};
     fn sample() -> popgene_core::Document {
         popgene_formats::import(
@@ -438,6 +500,84 @@ mod tests {
         assert!(!detail_text(&primer, Molecule::Dna).contains("Imported Tm:"));
         primer.qualifiers.clear();
         assert!(detail_text(&primer, Molecule::Dna).contains("Oligo sequence: not recorded"));
+    }
+    #[test]
+    fn primer_table_distinguishes_missing_color_from_explicit_black_and_orange() {
+        let mut primer = sample().features[5].clone();
+        primer.qualifiers.clear();
+        assert_eq!(table_swatch_rgb(&primer, 5, true), None);
+        assert_eq!(table_swatch_rgb(&primer, 5, false), Some(0xb985d0));
+        for (name, expected) in [("black", 0x000000), ("orange", 0xffa500)] {
+            primer.qualifiers = vec![("snapgene_color".into(), Some(name.into()))];
+            assert_eq!(table_swatch_rgb(&primer, 5, true), Some(expected));
+            assert_eq!(table_swatch_rgb(&primer, 1, false), Some(expected));
+        }
+        primer.qualifiers = vec![("snapgene_color".into(), Some("unknown".into()))];
+        assert_eq!(table_swatch_rgb(&primer, 5, true), None);
+        assert_eq!(primer.qualifier("snapgene_color"), Some("unknown"));
+    }
+    #[test]
+    fn map_and_sequence_figures_keep_primer_default_after_native_regrouping() {
+        let mut document =
+            popgene_core::Document::new("primer drawing", &"ACGT".repeat(25)).unwrap();
+        for (label, start) in [("neighbor A", 0), ("primer", 20), ("neighbor B", 40)] {
+            document
+                .annotate(
+                    label.into(),
+                    Segment {
+                        start,
+                        end: start + 4,
+                    },
+                    false,
+                )
+                .unwrap();
+        }
+        document.features[1].kind = "primer_bind".into();
+        document.features[1].qualifiers = vec![("primer_sequence".into(), Some("ACGT".into()))];
+        let bytes =
+            popgene_formats::encode(&document, popgene_formats::SaveFormat::SnapGene).unwrap();
+        let reopened = popgene_formats::import("regrouped.dna", &bytes).unwrap();
+        assert_eq!(document.features[1].kind, "primer_bind");
+        assert_eq!(reopened.features[2].kind, "primer_bind");
+        assert_eq!(reopened.features[2].display_color_rgb(), None);
+        assert_eq!(reopened.features[2].qualifier("snapgene_color"), None);
+        for doc in [&document, &reopened] {
+            let map = crate::gene_map::map_svg(
+                doc,
+                crate::gene_map::MapOptions {
+                    linear: true,
+                    features: false,
+                    sites: false,
+                    ..Default::default()
+                },
+                &[],
+                1200,
+                900,
+                false,
+                |text, size| text.len() as f32 * size * 0.6,
+            )
+            .unwrap();
+            let sequence = crate::sequence_figure::svg(
+                doc,
+                &crate::sequence_view::SequenceOptions {
+                    show_features: false,
+                    show_enzymes: false,
+                    ..Default::default()
+                },
+                &[],
+                &[],
+                1200.,
+                10,
+                true,
+                None,
+            )
+            .unwrap();
+            for svg in [map, sequence] {
+                assert!(svg.contains("#b985d0"));
+                assert!(!svg.contains("#65abe1"));
+                assert!(!svg.contains("#e2ac64"));
+            }
+        }
     }
     #[test]
     fn annotation_search_finds_sequence_and_qualifiers_case_insensitively() {

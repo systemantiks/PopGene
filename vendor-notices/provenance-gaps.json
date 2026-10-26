@@ -4,15 +4,21 @@
     "revision": "47178790cfc9d4a8b092051d8b413b78bd31254a",
     "reason": "The published release tree contains a licence declaration but no full upstream licence notice. This supplement preserves the original declaration; it is not a reconstructed licence notice."
   },
+  "fxhash-0.2.1": {
+    "kind": "declaration_only",
+    "revision": "537570af68de22d2f4bbdd5bee5d6e07268e6f42",
+    "reason": "The release source matching the published 0.2.1 crate and the current official repository contain no full licence notice. The exact original Rust Project copyright/licence header and published manifest declaration are retained, not replaced with an invented licence notice."
+  },
   "mac-0.1.1": {
     "kind": "declaration_only",
     "revision": "66afc663b68a65633ea165c742b5a9c6734581c2",
     "reason": "The published release tree contains a licence declaration but no full upstream licence notice. This supplement preserves the original declaration; it is not a reconstructed licence notice."
   },
   "malloc_buf-0.0.6": {
-    "kind": "declaration_only",
-    "revision": "a7811e5f4c6f9685dd57ad9bfe34e9bf6b0ba4f9",
-    "reason": "The published release tree contains a licence declaration but no full upstream licence notice. This supplement preserves the original declaration; it is not a reconstructed licence notice."
+    "kind": "later_upstream_notice",
+    "published_revision": "a7811e5f4c6f9685dd57ad9bfe34e9bf6b0ba4f9",
+    "notice_revision": "d9a3e539642bd90e07df458d226b19cdfa606863",
+    "reason": "The published release revision a7811e5f4c6f9685dd57ad9bfe34e9bf6b0ba4f9 has no full licence notice. Original MIT declaration and attribution remain. The later official MIT notice from d9a3e539642bd90e07df458d226b19cdfa606863 is retained without alteration; its applicability to the older published package remains a distribution-review item."
   },
   "objc_exception-0.1.2": {
     "kind": "declaration_only",
