@@ -18,11 +18,20 @@
     "oligotm.h": "d12d70f0bc79c30d33a224f11b6da4035192b7573dc4d36a4a0e32b9bf1d94a8",
     "masker.c": "05549e37957a9f4f619d7761713931413615f9bbf40b68443588665ebd93459b",
     "masker.h": "5a166ccfe1690ab9cb1296815f3842360d1d77a22dbcb4a0eadb05ee6c63b10a",
-    "amplicontm.c": "75fee6a05c4d6d54c0802c239c54ce2f7bb541ca0e5a2a175283d1e148a81f9f",
+    "amplicontm.c": "7870d877c1777c7102ac01f57e11b5619cfaf6763717181ebe9b576fbe1a5c78",
     "amplicontm.h": "ae208a928b424aaf85326a3097e1c07833000f61f9662ddc4738e8b41581542d",
     "LICENSE.txt": "ab15fd526bd8dd18a9e77ebc139656bf4d33e97fc7238cd11bf60e2b9b8666c6",
     "gpl-2.0.txt": "ab15fd526bd8dd18a9e77ebc139656bf4d33e97fc7238cd11bf60e2b9b8666c6",
     "ABOUT.txt": "d69bcc8fd357c2951c09d115a634b9e90353bdc82b8f10d794d4f4178883c997",
     "klib/khash.h": "41e778a9b0d79addccb83263667533ff2af81a8836da7edc6160dfade150968a"
-  }
+  },
+  "local_modifications": [
+    {
+      "file": "amplicontm.c",
+      "date": "2026-10-26",
+      "change": "Use an enum integer constant instead of a local variable for the 15-slot allocation array bound so MSVC can compile it. Capacity and calculations are unchanged.",
+      "upstream_sha256": "75fee6a05c4d6d54c0802c239c54ce2f7bb541ca0e5a2a175283d1e148a81f9f",
+      "modified_sha256": "7870d877c1777c7102ac01f57e11b5619cfaf6763717181ebe9b576fbe1a5c78"
+    }
+  ]
 }

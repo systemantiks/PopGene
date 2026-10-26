@@ -101,7 +101,8 @@ amplicon_result amplicontm(const  char *inseq,
                            amp_tm_method_type tm_formula,
                            int output) {
     int i, j;
-    int max_count = 15;
+    /* PopGene, 2026-10-26: keep the array bound constant for MSVC. */
+    enum { max_count = 15 };
     int alloc_count = 0;
     double schildkraut_corr = 0.0;
     double last_min = 0.0;
