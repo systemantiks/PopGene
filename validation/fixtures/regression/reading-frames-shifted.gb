@@ -1,0 +1,34 @@
+LOCUS       ShiftedFrameOffsets       24 bp    DNA     linear   SYN 22-OCT-2026
+DEFINITION  Original synthetic fixture distinguishing relative and global frames.
+ACCESSION   POPGENE_SHIFTED_FRAMES
+VERSION     POPGENE_SHIFTED_FRAMES.1
+KEYWORDS    synthetic; reading frame.
+SOURCE      synthetic sequence
+  ORGANISM  synthetic sequence
+COMMENT     Original PopGene synthetic data. Shifted boundaries distinguish
+            relative CDS codon_start offsets from global sequence reading frames.
+            Expected table-1 amino acids in coding order (Biopython 1.88):
+            shift2_phase2: EITVISY
+            shift3_phase3: NNRYFI
+            reverse2_phase2: YEITVIS
+            reverse3_phase3: *NNGYF
+FEATURES             Location/Qualifiers
+     CDS             2..23
+                     /label="shift2_phase2"
+                     /codon_start=2
+                     /transl_table=1
+     CDS             3..22
+                     /label="shift3_phase3"
+                     /codon_start=3
+                     /transl_table=1
+     CDS             complement(2..23)
+                     /label="reverse2_phase2"
+                     /codon_start=2
+                     /transl_table=1
+     CDS             complement(3..22)
+                     /label="reverse3_phase3"
+                     /codon_start=3
+                     /transl_table=1
+ORIGIN
+        1 atgaaataac cgttatttca tacg
+//

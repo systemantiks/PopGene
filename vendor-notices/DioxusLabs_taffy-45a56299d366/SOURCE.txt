@@ -1,0 +1,2 @@
+https://github.com/DioxusLabs/taffy/tree/45a56299d366ddb383e593a1f0372158d00e8530
+Exact revision recorded by published crate metadata. Files were downloaded unchanged.

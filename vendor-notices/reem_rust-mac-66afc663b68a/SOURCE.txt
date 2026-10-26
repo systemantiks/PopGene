@@ -1,0 +1,2 @@
+https://github.com/reem/rust-mac/tree/66afc663b68a65633ea165c742b5a9c6734581c2
+The published release tree contains a licence declaration but no full upstream licence notice. This supplement preserves the original declaration; it is not a reconstructed licence notice.

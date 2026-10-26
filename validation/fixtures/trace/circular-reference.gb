@@ -1,0 +1,6 @@
+LOCUS       circle                     8 bp    DNA     circular
+DEFINITION  Circular alignment seam oracle.
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 aaaacccc
+//

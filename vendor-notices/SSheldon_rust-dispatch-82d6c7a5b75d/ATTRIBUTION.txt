@@ -1,0 +1,1 @@
+dispatch 0.2.0 — Steven Sheldon. Cargo.toml declares MIT. Neither the crate archive nor the recorded upstream tree includes a licence notice. Confirm notice text before public distribution.

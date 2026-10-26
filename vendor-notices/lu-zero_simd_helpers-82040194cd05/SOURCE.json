@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/lu-zero/simd_helpers",
+  "revision": "82040194cd05affb060bf94d6f19f82a771d07fb",
+  "packages": [
+    "simd_helpers-0.1.0"
+  ],
+  "files": [
+    {
+      "path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/lu-zero/simd_helpers/82040194cd05affb060bf94d6f19f82a771d07fb/LICENSE",
+      "sha256": "d69f24ad84ec2ade64c0b68bdb31b41170e997b158370342056918329cc9af1e"
+    }
+  ],
+  "provenance_gap": "The published revision ca1a2f84aa386d758e98f8a609d990263932fb85 contains no licence file. LICENSE is from later official revision 82040194cd05affb060bf94d6f19f82a771d07fb and identifies the same author; applicability to 0.1.0 remains a distribution-review item."
+}

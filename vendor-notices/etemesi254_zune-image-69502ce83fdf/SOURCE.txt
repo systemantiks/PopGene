@@ -1,0 +1,2 @@
+https://github.com/etemesi254/zune-image/tree/69502ce83fdfecdd0beefd677e2abb3781b29d98
+Exact upstream revision from the published crate metadata.

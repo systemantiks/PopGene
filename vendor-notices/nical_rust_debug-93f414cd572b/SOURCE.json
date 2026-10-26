@@ -1,0 +1,14 @@
+{
+  "repository": "https://github.com/nical/rust_debug",
+  "revision": "93f414cd572b5c2781df93dbdc068ed13443d05a",
+  "packages": [
+    "svg_fmt-0.4.5"
+  ],
+  "files": [
+    {
+      "path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/nical/rust_debug/93f414cd572b5c2781df93dbdc068ed13443d05a/LICENSE",
+      "sha256": "7e98bed7f100747aaae7d82ab94fbe6b76fd6b84b09a3aaa413bff8196d0fbb1"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+name: Native Rust checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux build libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libudev-dev libdbus-1-dev libfontconfig1-dev libfreetype6-dev libxcb1-dev libxcb-xkb-dev libx11-xcb-dev libx11-dev libssl-dev pkg-config clang
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python validation/generate_native_fixtures.py --check
+      - run: python scripts/test-release.py
+      - name: Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+      - run: cargo +1.99.1 fmt --all --check
+      - run: cargo +1.99.1 test --locked --workspace
+      - run: cargo +1.99.1 clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo +1.99.1 build --locked --release -p popgene-desktop
