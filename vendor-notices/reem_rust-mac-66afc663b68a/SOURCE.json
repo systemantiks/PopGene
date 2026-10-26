@@ -1,0 +1,20 @@
+{
+  "repository": "https://github.com/reem/rust-mac",
+  "revision": "66afc663b68a65633ea165c742b5a9c6734581c2",
+  "packages": [
+    "mac-0.1.1"
+  ],
+  "files": [
+    {
+      "path": "Cargo.toml",
+      "url": "https://raw.githubusercontent.com/reem/rust-mac/66afc663b68a65633ea165c742b5a9c6734581c2/Cargo.toml",
+      "sha256": "6d465c5e5a4b3e197049e9fb7393b2f996c1c654e6ded700afce046fac2f7969"
+    },
+    {
+      "path": "README.md",
+      "url": "https://raw.githubusercontent.com/reem/rust-mac/66afc663b68a65633ea165c742b5a9c6734581c2/README.md",
+      "sha256": "8edb7a912d295acf1e1cfeafdd19a6813a63b301c7bbfda3c67f65509bd8d8cc"
+    }
+  ],
+  "provenance_gap": "The published release tree contains a licence declaration but no full upstream licence notice. This supplement preserves the original declaration; it is not a reconstructed licence notice."
+}

@@ -1,0 +1,2 @@
+https://github.com/longbridge/gpui-kit/tree/1676826d9d49b90f4d7b6808b69924f58796f6f1
+Exact revision recorded by published crate metadata. Files were downloaded unchanged.

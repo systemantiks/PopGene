@@ -1,0 +1,43 @@
+{
+  "source": "https://support.snapgene.com/hc/en-us/articles/10242682237588-What-is-Genbank-SnapGene-Format",
+  "files": [
+    {
+      "file": "segment-colours.gb",
+      "sha256": "3acd2ad8ff87b31fb0620163df65feeb1cba72fe878fb218bd2ae9c551488a94",
+      "provenance": "Original synthetic ACGT repeated 250 times, hand-authored using the published GenBank\u2013SnapGene segment-note grammar."
+    },
+    {
+      "file": "segment-colours-native.dna",
+      "sha256": "f2d0c9a4ceec77d9171db6a862503494c14a558d2213f809f8a7a2899f0d593d",
+      "provenance": "Minimal native fixture regenerated from ../native-records.json; original synthetic sequence serialized by SnapGene 8.2.3, with opaque catalogue/history/settings and identifying metadata removed."
+    }
+  ],
+  "expected": {
+    "sequence": "ACGT repeated 250 times",
+    "length_bp": 1000,
+    "topology": "circular",
+    "feature": "two_colour_domains",
+    "biological_location_genbank": "101..400",
+    "display_direction": "forward",
+    "segments": [
+      {
+        "range_1based_inclusive": [
+          101,
+          250
+        ],
+        "name": "Red domain",
+        "color": "#ff0000"
+      },
+      {
+        "range_1based_inclusive": [
+          251,
+          400
+        ],
+        "name": "Blue domain",
+        "color": "#0000ff"
+      }
+    ],
+    "native_location": "two adjacent parts 101..250 and 251..400, equivalent extracted sequence",
+    "original_note": "Original explanatory note; retained separately."
+  }
+}

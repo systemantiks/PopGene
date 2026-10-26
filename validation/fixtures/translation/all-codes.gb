@@ -1,0 +1,97 @@
+LOCUS       All_NCBI_Codes              405 bp    DNA     linear   SYN 25-OCT-2026
+DEFINITION  Original synthetic ATG-TGA-TGA CDSs using each active NCBI genetic code.
+ACCESSION   POPGENE_TRANSLATION
+KEYWORDS    synthetic; translation.
+SOURCE      synthetic sequence
+  ORGANISM  synthetic sequence
+FEATURES             Location/Qualifiers
+     CDS             1..9
+                     /label="NCBI_code_1"
+                     /transl_table=1
+     CDS             16..24
+                     /label="NCBI_code_2"
+                     /transl_table=2
+     CDS             31..39
+                     /label="NCBI_code_3"
+                     /transl_table=3
+     CDS             46..54
+                     /label="NCBI_code_4"
+                     /transl_table=4
+     CDS             61..69
+                     /label="NCBI_code_5"
+                     /transl_table=5
+     CDS             76..84
+                     /label="NCBI_code_6"
+                     /transl_table=6
+     CDS             91..99
+                     /label="NCBI_code_9"
+                     /transl_table=9
+     CDS             106..114
+                     /label="NCBI_code_10"
+                     /transl_table=10
+     CDS             121..129
+                     /label="NCBI_code_11"
+                     /transl_table=11
+     CDS             136..144
+                     /label="NCBI_code_12"
+                     /transl_table=12
+     CDS             151..159
+                     /label="NCBI_code_13"
+                     /transl_table=13
+     CDS             166..174
+                     /label="NCBI_code_14"
+                     /transl_table=14
+     CDS             181..189
+                     /label="NCBI_code_15"
+                     /transl_table=15
+     CDS             196..204
+                     /label="NCBI_code_16"
+                     /transl_table=16
+     CDS             211..219
+                     /label="NCBI_code_21"
+                     /transl_table=21
+     CDS             226..234
+                     /label="NCBI_code_22"
+                     /transl_table=22
+     CDS             241..249
+                     /label="NCBI_code_23"
+                     /transl_table=23
+     CDS             256..264
+                     /label="NCBI_code_24"
+                     /transl_table=24
+     CDS             271..279
+                     /label="NCBI_code_25"
+                     /transl_table=25
+     CDS             286..294
+                     /label="NCBI_code_26"
+                     /transl_table=26
+     CDS             301..309
+                     /label="NCBI_code_27"
+                     /transl_table=27
+     CDS             316..324
+                     /label="NCBI_code_28"
+                     /transl_table=28
+     CDS             331..339
+                     /label="NCBI_code_29"
+                     /transl_table=29
+     CDS             346..354
+                     /label="NCBI_code_30"
+                     /transl_table=30
+     CDS             361..369
+                     /label="NCBI_code_31"
+                     /transl_table=31
+     CDS             376..384
+                     /label="NCBI_code_32"
+                     /transl_table=32
+     CDS             391..399
+                     /label="NCBI_code_33"
+                     /transl_table=33
+ORIGIN
+        1 atgtgatgac cccccatgtg atgacccccc atgtgatgac cccccatgtg atgacccccc
+       61 atgtgatgac cccccatgtg atgacccccc atgtgatgac cccccatgtg atgacccccc
+      121 atgtgatgac cccccatgtg atgacccccc atgtgatgac cccccatgtg atgacccccc
+      181 atgtgatgac cccccatgtg atgacccccc atgtgatgac cccccatgtg atgacccccc
+      241 atgtgatgac cccccatgtg atgacccccc atgtgatgac cccccatgtg atgacccccc
+      301 atgtgatgac cccccatgtg atgacccccc atgtgatgac cccccatgtg atgacccccc
+      361 atgtgatgac cccccatgtg atgacccccc atgtgatgac ccccc
+//

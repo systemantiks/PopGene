@@ -1,0 +1,26 @@
+LOCUS       CalculatedFrames          21 bp    DNA     linear   SYN 22-OCT-2026
+DEFINITION  Original synthetic translation-display fixture without cached translations.
+ACCESSION   POPGENE_CALCULATED
+VERSION     POPGENE_CALCULATED.1
+KEYWORDS    synthetic; computed translation.
+SOURCE      synthetic sequence
+  ORGANISM  synthetic sequence
+COMMENT     Original synthetic data for PopGene display validation. The forward
+            and reverse CDSs both encode MK followed by a stop codon. The middle
+            CDS deliberately requests unsupported genetic code table 4.
+FEATURES             Location/Qualifiers
+     CDS             1..9
+                     /label="forward_MK_stop"
+                     /codon_start=1
+                     /transl_table=1
+     CDS             complement(13..21)
+                     /label="reverse_MK_stop"
+                     /codon_start=1
+                     /transl_table=1
+     CDS             10..12
+                     /label="unsupported_code_4"
+                     /codon_start=1
+                     /transl_table=4
+ORIGIN
+        1 atgaaataac cgttatttca t
+//

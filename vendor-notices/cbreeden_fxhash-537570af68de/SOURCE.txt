@@ -1,0 +1,8 @@
+fxhash 0.2.1
+Repository: https://github.com/cbreeden/fxhash
+Source revision: 537570af68de22d2f4bbdd5bee5d6e07268e6f42
+lib.rs at this revision exactly matches the published crate (SHA-256 885b72a1c977dc1c3ff4e0652719e62b6d8c3e713403e571afd581283f72df7b).
+COPYRIGHT-source-header.txt is the unmodified initial copyright/licence header from that file.
+Cargo.toml.orig and README.md are unmodified published-package files.
+
+The release source matching the published 0.2.1 crate and the current official repository contain no full licence notice. The exact original Rust Project copyright/licence header and published manifest declaration are retained, not replaced with an invented licence notice.

@@ -1,0 +1,5 @@
+mac-0.1.1
+Upstream declared licence: MIT/Apache-2.0
+Authors from the published manifest: Jonathan Reem <jonathan.reem@gmail.com>
+
+The published release tree contains a licence declaration but no full upstream licence notice. This supplement preserves the original declaration; it is not a reconstructed licence notice.

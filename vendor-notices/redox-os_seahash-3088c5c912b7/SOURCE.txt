@@ -1,0 +1,2 @@
+https://gitlab.redox-os.org/redox-os/seahash/-/raw/3088c5c912b70b586d27bf553fbe964e025a2c89/LICENSE
+The published revision 94b632aeac099031c373599313d5b5f0acbbaec0 contains no licence file. The full MIT text is from the later official licence-file revision 3088c5c912b70b586d27bf553fbe964e025a2c89. The unchanged published author/licence declaration is also retained; applicability to 4.1.0 remains a distribution-review item.

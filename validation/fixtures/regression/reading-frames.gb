@@ -1,0 +1,32 @@
+LOCUS       ReadingFrameOffsets       24 bp    DNA     linear   SYN 22-OCT-2026
+DEFINITION  Original synthetic fixture for native CDS reading-frame semantics.
+ACCESSION   POPGENE_FRAME_OFFSETS
+VERSION     POPGENE_FRAME_OFFSETS.1
+KEYWORDS    synthetic; reading frame.
+SOURCE      synthetic sequence
+  ORGANISM  synthetic sequence
+COMMENT     Original PopGene synthetic data. Four overlapping CDSs deliberately
+            exercise codon_start=1/2/3 and reverse codon_start=2. No cached
+            translations are supplied. Expected table-1 amino acids in coding
+            order: forward_1 MK*PLFHT, forward_2 *NNRYFI, forward_3 EITVISY,
+            reverse_2 V*NNGYF. This fixture tests display, not biological ORFs.
+FEATURES             Location/Qualifiers
+     CDS             1..24
+                     /label="forward_1"
+                     /codon_start=1
+                     /transl_table=1
+     CDS             1..24
+                     /label="forward_2"
+                     /codon_start=2
+                     /transl_table=1
+     CDS             1..24
+                     /label="forward_3"
+                     /codon_start=3
+                     /transl_table=1
+     CDS             complement(1..24)
+                     /label="reverse_2"
+                     /codon_start=2
+                     /transl_table=1
+ORIGIN
+        1 atgaaataac cgttatttca tacg
+//

@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/servo/pathfinder",
+  "revision": "6c3c0466f451c5bd2007087728cd168798cd64e8",
+  "packages": [
+    "pathfinder_geometry-0.5.1",
+    "pathfinder_simd-0.5.6"
+  ],
+  "files": [
+    {
+      "path": "LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/servo/pathfinder/6c3c0466f451c5bd2007087728cd168798cd64e8/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+    },
+    {
+      "path": "LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/servo/pathfinder/6c3c0466f451c5bd2007087728cd168798cd64e8/LICENSE-MIT",
+      "sha256": "0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720"
+    }
+  ],
+  "provenance_gap": "The published geometry revision a5e98fac00f433fe2ff4b2135383d82491b8bfc5 is unavailable from the official repository. Shared project notices are taken from available official revision 6c3c0466f451c5bd2007087728cd168798cd64e8 (also used by the resolved pathfinder_simd crate). Published geometry source headers declare the same MIT/Apache terms and copyright holders."
+}

@@ -1,0 +1,93 @@
+{
+  "provenance": "Original deterministic synthetic fixtures; no biological validation implied",
+  "seed": 823,
+  "sequence_length": 5000,
+  "sequence_sha256": "194483b119b6096a9b16b901a874325f723759c5e05e82c86b4f0113716f184f",
+  "forward_primer": "CTTAGGATGATCACGTTACAGTTC",
+  "reverse_primer": "AACGCGTTTCACAGGAAACAAATC",
+  "features": {
+    "origin_wrap": {
+      "parts": [
+        [
+          4900,
+          5000
+        ],
+        [
+          0,
+          120
+        ]
+      ],
+      "strand": 1,
+      "length": 220
+    },
+    "overlap_forward": {
+      "parts": [
+        [
+          100,
+          400
+        ]
+      ],
+      "strand": 1,
+      "length": 300
+    },
+    "overlap_reverse": {
+      "parts": [
+        [
+          220,
+          500
+        ]
+      ],
+      "strand": -1,
+      "length": 280
+    },
+    "tiny_orf": {
+      "parts": [
+        [
+          600,
+          609
+        ]
+      ],
+      "strand": 1,
+      "length": 9
+    },
+    "audit_forward": {
+      "parts": [
+        [
+          1000,
+          1024
+        ]
+      ],
+      "strand": 1,
+      "length": 24
+    },
+    "audit_reverse": {
+      "parts": [
+        [
+          2000,
+          2024
+        ]
+      ],
+      "strand": -1,
+      "length": 24
+    }
+  },
+  "abif": {
+    "bases": "ACGTN",
+    "qualities": [
+      40,
+      35,
+      30,
+      20,
+      5
+    ],
+    "peak_indices": [
+      2,
+      5,
+      8,
+      11,
+      14
+    ],
+    "channel_order": "GATC",
+    "signal_samples": 16
+  }
+}

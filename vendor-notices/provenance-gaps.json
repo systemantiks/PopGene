@@ -1,0 +1,46 @@
+{
+  "block-0.1.6": {
+    "kind": "declaration_only",
+    "revision": "47178790cfc9d4a8b092051d8b413b78bd31254a",
+    "reason": "The published release tree contains a licence declaration but no full upstream licence notice. This supplement preserves the original declaration; it is not a reconstructed licence notice."
+  },
+  "fxhash-0.2.1": {
+    "kind": "declaration_only",
+    "revision": "537570af68de22d2f4bbdd5bee5d6e07268e6f42",
+    "reason": "The release source matching the published 0.2.1 crate and the current official repository contain no full licence notice. The exact original Rust Project copyright/licence header and published manifest declaration are retained, not replaced with an invented licence notice."
+  },
+  "mac-0.1.1": {
+    "kind": "declaration_only",
+    "revision": "66afc663b68a65633ea165c742b5a9c6734581c2",
+    "reason": "The published release tree contains a licence declaration but no full upstream licence notice. This supplement preserves the original declaration; it is not a reconstructed licence notice."
+  },
+  "malloc_buf-0.0.6": {
+    "kind": "later_upstream_notice",
+    "published_revision": "a7811e5f4c6f9685dd57ad9bfe34e9bf6b0ba4f9",
+    "notice_revision": "d9a3e539642bd90e07df458d226b19cdfa606863",
+    "reason": "The published release revision a7811e5f4c6f9685dd57ad9bfe34e9bf6b0ba4f9 has no full licence notice. Original MIT declaration and attribution remain. The later official MIT notice from d9a3e539642bd90e07df458d226b19cdfa606863 is retained without alteration; its applicability to the older published package remains a distribution-review item."
+  },
+  "objc_exception-0.1.2": {
+    "kind": "declaration_only",
+    "revision": "c86ad3a52984461fc5c63980d12e8ceed847854c",
+    "reason": "The published release tree contains a licence declaration but no full upstream licence notice. This supplement preserves the original declaration; it is not a reconstructed licence notice."
+  },
+  "pathfinder_geometry-0.5.1": {
+    "kind": "unavailable_published_revision",
+    "published_revision": "a5e98fac00f433fe2ff4b2135383d82491b8bfc5",
+    "notice_revision": "6c3c0466f451c5bd2007087728cd168798cd64e8",
+    "reason": "The published geometry revision a5e98fac00f433fe2ff4b2135383d82491b8bfc5 is unavailable from the official repository. Shared project notices are taken from available official revision 6c3c0466f451c5bd2007087728cd168798cd64e8 (also used by the resolved pathfinder_simd crate). Published geometry source headers declare the same MIT/Apache terms and copyright holders."
+  },
+  "seahash-4.1.0": {
+    "kind": "later_upstream_notice",
+    "published_revision": "94b632aeac099031c373599313d5b5f0acbbaec0",
+    "notice_revision": "3088c5c912b70b586d27bf553fbe964e025a2c89",
+    "reason": "The published revision 94b632aeac099031c373599313d5b5f0acbbaec0 contains no licence file. The full MIT text is from the later official licence-file revision 3088c5c912b70b586d27bf553fbe964e025a2c89. The unchanged published author/licence declaration is also retained; applicability to 4.1.0 remains a distribution-review item."
+  },
+  "simd_helpers-0.1.0": {
+    "kind": "later_upstream_notice",
+    "published_revision": "ca1a2f84aa386d758e98f8a609d990263932fb85",
+    "notice_revision": "82040194cd05affb060bf94d6f19f82a771d07fb",
+    "reason": "The published revision ca1a2f84aa386d758e98f8a609d990263932fb85 contains no licence file. LICENSE is from later official revision 82040194cd05affb060bf94d6f19f82a771d07fb and identifies the same author; applicability to 0.1.0 remains a distribution-review item."
+  }
+}

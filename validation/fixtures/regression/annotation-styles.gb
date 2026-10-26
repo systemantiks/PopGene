@@ -1,0 +1,22 @@
+LOCUS       Exported                 120 bp DNA     linear   SYN 01-JAN-2000
+DEFINITION  Synthetic annotation styles: line, gap, named segments, cleavage and between-base site.
+KEYWORDS    Synthetic styles
+REFERENCE   1  (bases 1 to 120)
+  AUTHORS   PopGene synthetic fixtures.
+  TITLE     Direct Submission
+  JOURNAL   SnapGene GenBank format
+FEATURES             Location/Qualifiers
+     misc_feature    join(11..30,51..80)
+                     /label="styled region"
+                     /snapgene_gap="31 .. 50 / #778899 / connector"
+                     /note="This forward directional feature has 3 segments:
+                     1: 11 .. 30 / #------ / Line segment
+                     2: 51 .. 65 / #0000ff / Blue segment
+                     3: 66 .. 80 / #00cc66 / Green segment
+                     Cleavage sites after bases 30, 65, 80"
+     misc_feature    90^91
+                     /label="Between bases"
+ORIGIN
+        1 acgtacgtac gtacgtacgt acgtacgtac gtacgtacgt acgtacgtac gtacgtacgt
+       61 acgtacgtac gtacgtacgt acgtacgtac gtacgtacgt acgtacgtac gtacgtacgt
+//

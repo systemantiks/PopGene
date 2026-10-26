@@ -1,0 +1,26 @@
+{
+  "scope": "Unmodified static fonts embedded in figure exports; redistributed under SIL Open Font License 1.1.",
+  "source": "https://crates.io/crates/cosmic-text/0.19.0",
+  "repository": "https://github.com/pop-os/cosmic-text",
+  "revision": "c24886c2471e5606587c46090cd25dbbf209186b",
+  "crate_sha256": "be17b688510d934ce13f48a2beba700e11583e281e0fda99c22bb256a14eda73",
+  "verification": "Copied from the existing local Cargo package after verifying its archive SHA-256 against Cargo.lock and each file against the archive. No font modification or network download.",
+  "files": [
+    {
+      "asset": "assets/fonts/NotoSans-Regular.ttf",
+      "sha256": "2ec33f84606cbaa0a1a944488e14f97faf2f6a25ecdd8354f5358f06da13c7d9",
+      "source_path": "fonts/NotoSans-Regular.ttf",
+      "license_path": "LICENSE-NotoSans.txt",
+      "license_sha256": "5ec4347054089def6904da61d04f0360968f9ef36634b1fe007a5b6ec2f7aa96",
+      "source_license_path": "fonts/NotoSans-LICENSE"
+    },
+    {
+      "asset": "assets/fonts/FiraMono-Medium.ttf",
+      "sha256": "5f9173ce3d05fadef74c7eed06570d54e4f75bd0cd9860726fb2987a7f848292",
+      "source_path": "fonts/FiraMono-Medium.ttf",
+      "license_path": "LICENSE-FiraMono.txt",
+      "license_sha256": "587dd9548304fd421cd254f7550bd101c1250ffc95417f2f7f92d55b44ecbe53",
+      "source_license_path": "fonts/FiraMono-LICENSE"
+    }
+  ]
+}

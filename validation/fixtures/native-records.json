@@ -1,0 +1,116 @@
+{
+  "provenance": "Original PopGene synthetic sequences and annotations. Native record syntax was serialized by SnapGene 8.2.3, then reduced to header, sequence, features, primers and selected notes. Vendor enzyme catalogues, compressed history, display preferences, UUIDs and creation/modification metadata are excluded. These reduced fixtures are regenerated from this inspectable record source.",
+  "files": {
+    "annotated.dna": [
+      {
+        "kind": 9,
+        "hex": "536e617047656e650001000f0014"
+      },
+      {
+        "kind": 0,
+        "flags": 3,
+        "sequence": "gccagccgcgaggtcgaccaaccacggactgagagtgctaccgccgtccggctccgcttctttctccgaccaccagcaaactaacacaaccatgctcaaagtcagtaaaaatcttcctgggtgccctgattcgggttgcgaagtttacgtcgatccacatgcgggaggcctcccaccccctctctttggaatactcaagcggacgaagcaaacggcactgagggggaatctatctgacacggacgatcgggcggctgagtcattgaatgttaggacgagtagctcacatttcgcaaatacggcagcctttaggattccaaatgctctttatctttcgtaattgatacagaatggtccggtagtctctatagcgggtgggcctatgtcctatatcacctagtaacagacgtaagagagtatcccgtgtacgacaagaatcgtgatgcgaaagagacgccaagattggtccacacgtgttccccaacatctcaatagtagaacataaaaggacaccgcgcgaaattgaaccagcgccaggcctattttaatttaggtcatcttacgacggttaattagaggaaagccgtggacgagagatccatgaaataatgattccagggaaaccaattcagcagtggtttcagttaaggagtacgtcgagggatgtcccgtgagcttgcgactgtagcgctgcatcaatggatttgagccaaagtatctgacactcactagccgcattacagtaggcatcagaggagactccaactatatcgagagtgagggttctcactgcattaagattcccaaactaatagcttccactccgccattgtatagacggagcggattgtcggagacccattgagtcacgctgtaccggatcacgagctggagatgcgaaccaacatcttgtcctgcattcaatatggtcccacaaactttgcgcaattgtttttctggatctggaaaggcaaaacgccaaggttttgataccagccatcttaggatgatcacgttacagttctttgcgtgtagctgtggtggcgactttgggaatgctgatagacgcctcatcgtggtccagagcacggtttcgtaccgttaaggtagatagctgtaaatcccctcccgtgaagatcgcacataacggcctcttgaatgctgctccctcacaaggcctcggagagcctagcaccgcgctgcgaccctttgacagcatgcgtatacacatgttactgagcacatgaaacatacaatgctcgaacacttcttgccttaccttactgttagttagaaggtttataccatcgagtgcgcccaacatagcggctacagtataaatgcataaacgtgctaccagcacggccgaattgtgtgtgcctgcaaattcaggagtacggacaggcaggcaagtgttccattatccggagatttgcagcacgtaacggcactcgaacatcttgccatgtgagtatccggtaagaggtaccaccaagcctttgtcgtgctcaaggctggccgttagcgccacgtcgttagtgtaaaatcaagaagtttgcgtcgatatcatcctcaaagcaattaggggttctgctacacggcctcggcttagaagcctggtcttactttattggaggacgcctgaaatgcacggtatatcttctttgttatttctttggacccggtatggtatcaacgtgtactgaactagctccacagatttatgtcaactaaccggaaggcgtcaagtcttatcgcaatttagatcgattggcccgtctagcgcagagttccggcgacctggaaaagagatttgggaccgcgatagagcggtcgaccaaagcagtcatctgaaacgatcgagatcattagtatgcaagcccgctcaggagcggataaagagcctaatccgaaataggcgctggaaggggctaagcagactcaagcggcggctatttggccagggggtcattcacctacgtcaacctaatcaatagaacgatttgtttcctgtgaaacgcgtttgaacagatcccaccgtacctggagattgttccgaggtaactgtgtccctagttgacctcccgcgcgcagcggtatgttgggaatccggcgcccgacgttcccggatggagtactcgctccggaagagttaatccaattggcgtgatcatcgattggacaggacagatgttaatttaatccagtcgaggtcggagaagatccggagtgctacaggtcggcatacctgtgttgtcttggtgtaacctaagagatcgattggagcgttatcacaagtgtccactaaattggagatggccagatatccatagctataacgccagaattcataaagttgtcggtaatgcatccactaggacgtgtccgctccgtagtcccgcccgtaacgttgataaccaccgccatctgcgaagacgccactctcgtgtcgagtagtatcgtcgcttaagaaaaccggtcgccccgggagctgatcggagctgattcggagggacactggcgaggggtggtccaatggactacaaactagctccgataaaggaaacctggcgtatcgacgtcaacccaatctagctactcgtaaaccaaaagaatagtagtttcagcctaaatcggtatgactcttgcttgaacgcttatctctccccgtaccagtcgataagccctttcgctcgagacggaccgtcaacgccctatttctagacggcagtcttttcagtgtaccataacaaagacggagtatatcaaaaggggcgaagcaaggtgcaatattgcttgtcccaaacgcaagagatgcgggtacactcaatagcagattccgcgcctatccccgggtaaccagtgttgaagaagacgtcaaattgatggttgagatttgacaaacctaagtggtcggggcgggctcagcaccaagatgaatgatgcgtggggtgcgatgaatctcccatagggtcaaacagcattgacgtttccatccagryswkmbdhvnacgtctccagctaggtcaagcatcgccgacctgaggaataaccaactggaaatggctacgatcgcgatatcagaatccatttaaagtgtccaacgcgcagacggtttaatgattttttgcttcgtacatcggcacctggcgcagccgtctgtggggttgacatattcgatgggcaggttgtggcagattcctcattatgttgatggcatcaacctcttttagacactgtacctactctgatggatggtttgcatggtgcgcatggattcacattgaggtagagtattatggcactgtgctgcctttaacatagataaacactcacacccgctgccaccagcgcttaaacaggctacaactgttactttgccagtcgccctgcaccgcgatgggatgtttagccttgaggactcagcgtgtggcacctgccatgatcaaaatatcgcgaagagtcaactagcgtcttagtactgtttacccttcactttcttgctagactgaggctaggattacgcaagcgcggtaacttcaattcacgacatctgtaagttgataatctttcttttgctggaggtctgcgggcgccccgtagatccatgcttattttagattacagcttagcacattccgatacactcgtacgcaggcgcgtttatacaatgcaaccgtggataactaagcgggcttctcgcgaatgttgaaatccgaaccgcgtcactcctcagaaataacataatgatgatgaaccgcctgaaccctgctttacgtagcttatcctgagcagagggagtgacaaaatacagggcgtgtaccgcaatgtgaagtcctatgggctctttcatcgctcctgagctaagctatcacgtcattgcggaaaaatgtatgcgtataaaatcccaacatctccgccttaccatcgtgtaggcagttttgcgcaaaatcagaacttatggaatgttaattggtcctctacgaacggtggcttactacttgccagatggaccgagaacgtccagggcttcggtagttacccgctgaagagtcatctcatcgcttttagagaacctttcttaatcaaaagagcatatagaaggctctcggtttatggggctccattccgtacgtactaggaagatagcgggccatgatctttgaaggactgtagctacgccagctctatttgaaacgtacgacggtctcgatatagaagatcgaaacatgccggacggcgagatccccgttttttcgtcgccgttacgatctgcagactgcgagccacaaaccggggtaggtgaacgcgccgaatgcttatgtatcggagaagagccagaaagagcctcaattaagccttgtcaaacgtgtaaagtgacaaagcccacggcgatcgataaaaaactaggaagttcatactcagctcctagggccccaaggaagtctatcccagtcgtcgctttacctgcgaaggagacaaccctgaatccctaacccctcagatagtcggactggcttgacctttcggataattcagactgtgcgtcagtagatgaggacgcgttcagccggcaaaacgttaaattgaggtgacgtaccctcgatatatactcttatatctcgcccgccctatagggtgtcgcagtgtaaaatggccggatacagtattcctattaggccttccaagcgcgatactccgcataaggtagcgccagttgcaagtgaaagtcatggataaaagacttttctccccccactactgaaatgacaaacccagacaccgtatcctgtgtatatgtgacggagtaattaagggtgaggcaatgatccttatcctaaacataccaatactttgtaagagcggcaccagagacgtggcttagccggaaaaacaatgttagagtctaaaaaggggaccgtcgaaccatctttgtgagaaaacttccccggctggaccgttactaaccctaatctgacgagggaccggtcagctactaa"
+      },
+      {
+        "kind": 10,
+        "xml": "<?xml version=\"1.0\"?><Features nextValidID=\"4\"><Feature recentID=\"0\" name=\"origin_wrap\" directionality=\"1\" type=\"misc_feature\" allowSegmentOverlaps=\"0\" consecutiveTranslationNumbering=\"1\"><Segment range=\"4901-120\" color=\"#00ff00\" type=\"standard\"/><Q name=\"label\"><V text=\"origin_wrap\"/></Q></Feature><Feature recentID=\"1\" name=\"overlap_forward\" type=\"misc_feature\" allowSegmentOverlaps=\"0\" consecutiveTranslationNumbering=\"1\"><Segment range=\"101-400\" color=\"#a6acb3\" type=\"standard\"/><Q name=\"label\"><V text=\"overlap_forward\"/></Q><Q name=\"note\"><V text=\"&lt;html&gt;&lt;body&gt;Synthetic overlap; not a biological element&lt;/body&gt;&lt;/html&gt;\"/></Q></Feature><Feature recentID=\"2\" name=\"overlap_reverse\" directionality=\"2\" type=\"misc_feature\" swappedSegmentNumbering=\"1\" allowSegmentOverlaps=\"0\" consecutiveTranslationNumbering=\"1\"><Segment range=\"221-500\" color=\"#a6acb3\" type=\"standard\"/><Q name=\"label\"><V text=\"overlap_reverse\"/></Q></Feature><Feature recentID=\"3\" name=\"tiny_orf\" directionality=\"1\" translationMW=\"277.39\" type=\"CDS\" allowSegmentOverlaps=\"0\" consecutiveTranslationNumbering=\"1\" hitsStopCodon=\"1\"><Segment range=\"601-609\" color=\"#993366\" type=\"standard\" translated=\"1\"/><Q name=\"codon_start\"><V int=\"1\"/></Q><Q name=\"label\"><V text=\"tiny_orf\"/></Q><Q name=\"transl_table\"><V int=\"1\"/></Q><Q name=\"translation\"><V text=\"MK*\"/></Q></Feature></Features>\n"
+      },
+      {
+        "kind": 5,
+        "xml": "<?xml version=\"1.0\"?><Primers nextValidID=\"2\"><HybridizationParams minContinuousMatchLen=\"10\" allowMismatch=\"1\" minMeltingTemperature=\"40\" showAdditionalFivePrimeMatches=\"1\" minimumFivePrimeAnnealing=\"15\"/><Primer recentID=\"0\" name=\"audit_forward\" sequence=\"CTTAGGATGATCACGTTACAGTTC\" color=\"blue\" dateAdded=\"2026-10-20T23:00:00Z\"><BindingSite location=\"1000-1023\" boundStrand=\"0\" annealedBases=\"CTTAGGATGATCACGTTACAGTTC\" meltingTemperature=\"56\"><Component hybridizedRange=\"1000-1023\" bases=\"CTTAGGATGATCACGTTACAGTTC\"/></BindingSite><BindingSite simplified=\"1\" location=\"1000-1023\" boundStrand=\"0\" annealedBases=\"CTTAGGATGATCACGTTACAGTTC\" meltingTemperature=\"56\"><Component hybridizedRange=\"1000-1023\" bases=\"CTTAGGATGATCACGTTACAGTTC\"/></BindingSite></Primer><Primer recentID=\"1\" name=\"audit_reverse\" sequence=\"AACGCGTTTCACAGGAAACAAATC\" color=\"red\" dateAdded=\"2026-10-20T23:00:00Z\"><BindingSite location=\"2000-2023\" boundStrand=\"1\" annealedBases=\"AACGCGTTTCACAGGAAACAAATC\" meltingTemperature=\"59\"><Component hybridizedRange=\"2000-2023\" bases=\"AACGCGTTTCACAGGAAACAAATC\"/></BindingSite><BindingSite simplified=\"1\" location=\"2000-2023\" boundStrand=\"1\" annealedBases=\"AACGCGTTTCACAGGAAACAAATC\" meltingTemperature=\"59\"><Component hybridizedRange=\"2000-2023\" bases=\"AACGCGTTTCACAGGAAACAAATC\"/></BindingSite></Primer></Primers>\n"
+      },
+      {
+        "kind": 6,
+        "xml": "<Notes>\n<Type>Synthetic</Type>\n<ConfirmedExperimentally>0</ConfirmedExperimentally>\n<Description>PopGene deterministic synthetic compatibility fixture.</Description>\n<AccessionNumber>POPGENE823</AccessionNumber>\n<SequenceClass>UNA</SequenceClass>\n<TransformedInto>unspecified</TransformedInto>\n<References>\n<Reference authors=\"PopGene audit.\" journal=\"SnapGene GenBank format\" journalName=\"SnapGene GenBank format\" title=\"Direct Submission\" type=\"Journal Article\"/>\n</References>\n<Comments>Generated by PopGene; contains no biological construct.</Comments>\n</Notes>\n"
+      }
+    ],
+    "synthetic-pcr.dna": [
+      {
+        "kind": 9,
+        "hex": "536e617047656e650001000f0014"
+      },
+      {
+        "kind": 0,
+        "flags": 2,
+        "sequence": "CTTAGGATGATCACGTTACAGTTCtttgcgtgtagctgtggtggcgactttgggaatgctgatagacgcctcatcgtggtccagagcacggtttcgtaccgttaaggtagatagctgtaaatcccctcccgtgaagatcgcacataacggcctcttgaatgctgctccctcacaaggcctcggagagcctagcaccgcgctgcgaccctttgacagcatgcgtatacacatgttactgagcacatgaaacatacaatgctcgaacacttcttgccttaccttactgttagttagaaggtttataccatcgagtgcgcccaacatagcggctacagtataaatgcataaacgtgctaccagcacggccgaattgtgtgtgcctgcaaattcaggagtacggacaggcaggcaagtgttccattatccggagatttgcagcacgtaacggcactcgaacatcttgccatgtgagtatccggtaagaggtaccaccaagcctttgtcgtgctcaaggctggccgttagcgccacgtcgttagtgtaaaatcaagaagtttgcgtcgatatcatcctcaaagcaattaggggttctgctacacggcctcggcttagaagcctggtcttactttattggaggacgcctgaaatgcacggtatatcttctttgttatttctttggacccggtatggtatcaacgtgtactgaactagctccacagatttatgtcaactaaccggaaggcgtcaagtcttatcgcaatttagatcgattggcccgtctagcgcagagttccggcgacctggaaaagagatttgggaccgcgatagagcggtcgaccaaagcagtcatctgaaacgatcgagatcattagtatgcaagcccgctcaggagcggataaagagcctaatccgaaataggcgctggaaggggctaagcagactcaagcggcggctatttggccagggggtcattcacctacgtcaacctaatcaatagaacGATTTGTTTCCTGTGAAACGCGTT"
+      },
+      {
+        "kind": 5,
+        "xml": "<?xml version=\"1.0\"?><Primers nextValidID=\"4\"><HybridizationParams minContinuousMatchLen=\"10\" allowMismatch=\"1\" minMeltingTemperature=\"40\" showAdditionalFivePrimeMatches=\"1\" minimumFivePrimeAnnealing=\"15\"/><Primer recentID=\"0\" name=\"audit_forward\" sequence=\"CTTAGGATGATCACGTTACAGTTC\" color=\"blue\" dateAdded=\"2026-10-20T23:00:00Z\"><BindingSite location=\"0-23\" boundStrand=\"0\" annealedBases=\"CTTAGGATGATCACGTTACAGTTC\" meltingTemperature=\"55\"><Component hybridizedRange=\"0-23\" bases=\"CTTAGGATGATCACGTTACAGTTC\"/></BindingSite><BindingSite simplified=\"1\" location=\"0-23\" boundStrand=\"0\" annealedBases=\"CTTAGGATGATCACGTTACAGTTC\" meltingTemperature=\"55\"><Component hybridizedRange=\"0-23\" bases=\"CTTAGGATGATCACGTTACAGTTC\"/></BindingSite></Primer><Primer recentID=\"1\" name=\"audit_reverse\" sequence=\"AACGCGTTTCACAGGAAACAAATC\" color=\"red\" dateAdded=\"2026-10-20T23:00:00Z\"><BindingSite location=\"1000-1023\" boundStrand=\"1\" annealedBases=\"AACGCGTTTCACAGGAAACAAATC\" meltingTemperature=\"58\"><Component hybridizedRange=\"1000-1023\" bases=\"AACGCGTTTCACAGGAAACAAATC\"/></BindingSite><BindingSite simplified=\"1\" location=\"1000-1023\" boundStrand=\"1\" annealedBases=\"AACGCGTTTCACAGGAAACAAATC\" meltingTemperature=\"58\"><Component hybridizedRange=\"1000-1023\" bases=\"AACGCGTTTCACAGGAAACAAATC\"/></BindingSite></Primer><Primer recentID=\"2\" name=\"Primer 1\" sequence=\"CTTAGGATGATCACGTTACAGTTC\" dateAdded=\"2026-10-21T13:35:01Z\"><BindingSite location=\"0-23\" boundStrand=\"0\" annealedBases=\"CTTAGGATGATCACGTTACAGTTC\" meltingTemperature=\"55\"><Component hybridizedRange=\"0-23\" bases=\"CTTAGGATGATCACGTTACAGTTC\"/></BindingSite><BindingSite simplified=\"1\" location=\"0-23\" boundStrand=\"0\" annealedBases=\"CTTAGGATGATCACGTTACAGTTC\" meltingTemperature=\"55\"><Component hybridizedRange=\"0-23\" bases=\"CTTAGGATGATCACGTTACAGTTC\"/></BindingSite></Primer><Primer recentID=\"3\" name=\"Primer 2\" sequence=\"AACGCGTTTCACAGGAAACAAATC\" dateAdded=\"2026-10-21T13:35:01Z\"><BindingSite location=\"1000-1023\" boundStrand=\"1\" annealedBases=\"AACGCGTTTCACAGGAAACAAATC\" meltingTemperature=\"58\"><Component hybridizedRange=\"1000-1023\" bases=\"AACGCGTTTCACAGGAAACAAATC\"/></BindingSite><BindingSite simplified=\"1\" location=\"1000-1023\" boundStrand=\"1\" annealedBases=\"AACGCGTTTCACAGGAAACAAATC\" meltingTemperature=\"58\"><Component hybridizedRange=\"1000-1023\" bases=\"AACGCGTTTCACAGGAAACAAATC\"/></BindingSite></Primer></Primers>\n"
+      },
+      {
+        "kind": 6,
+        "xml": "<Notes>\n<Type>Synthetic</Type>\n<ConfirmedExperimentally>0</ConfirmedExperimentally>\n<SequenceClass>UNA</SequenceClass>\n<TransformedInto>unspecified</TransformedInto>\n</Notes>\n"
+      }
+    ],
+    "regression/reading-frames-native.dna": [
+      {
+        "kind": 9,
+        "hex": "536e617047656e650001000f0014"
+      },
+      {
+        "kind": 0,
+        "flags": 2,
+        "sequence": "atgaaataaccgttatttcatacg"
+      },
+      {
+        "kind": 10,
+        "xml": "<?xml version=\"1.0\"?><Features nextValidID=\"4\"><Feature recentID=\"0\" name=\"forward_1\" directionality=\"1\" translationMW=\"-1.00\" type=\"CDS\" allowSegmentOverlaps=\"0\" consecutiveTranslationNumbering=\"1\"><Segment range=\"1-24\" color=\"#993366\" type=\"standard\" translated=\"1\"/><Q name=\"codon_start\"><V int=\"1\"/></Q><Q name=\"label\"><V text=\"forward_1\"/></Q><Q name=\"transl_table\"><V int=\"1\"/></Q><Q name=\"translation\"><V text=\"MK*PLFHT\"/></Q></Feature><Feature recentID=\"1\" name=\"forward_2\" directionality=\"1\" translationMW=\"-1.00\" type=\"CDS\" allowSegmentOverlaps=\"0\" readingFrame=\"2\" consecutiveTranslationNumbering=\"1\"><Segment range=\"1-24\" color=\"#993366\" type=\"standard\" translated=\"1\"/><Q name=\"codon_start\"><V int=\"2\"/></Q><Q name=\"label\"><V text=\"forward_2\"/></Q><Q name=\"transl_table\"><V int=\"1\"/></Q><Q name=\"translation\"><V text=\"*NNRYFI\"/></Q></Feature><Feature recentID=\"2\" name=\"forward_3\" directionality=\"1\" translationMW=\"823.94\" type=\"CDS\" allowSegmentOverlaps=\"0\" readingFrame=\"3\" consecutiveTranslationNumbering=\"1\"><Segment range=\"1-24\" color=\"#993366\" type=\"standard\" translated=\"1\"/><Q name=\"codon_start\"><V int=\"3\"/></Q><Q name=\"label\"><V text=\"forward_3\"/></Q><Q name=\"transl_table\"><V int=\"1\"/></Q><Q name=\"translation\"><V text=\"EITVISY\"/></Q></Feature><Feature recentID=\"3\" name=\"reverse_2\" directionality=\"2\" translationMW=\"-1.00\" type=\"CDS\" swappedSegmentNumbering=\"1\" allowSegmentOverlaps=\"0\" readingFrame=\"-2\" consecutiveTranslationNumbering=\"1\"><Segment range=\"1-24\" color=\"#993366\" type=\"standard\" translated=\"1\"/><Q name=\"codon_start\"><V int=\"2\"/></Q><Q name=\"label\"><V text=\"reverse_2\"/></Q><Q name=\"transl_table\"><V int=\"1\"/></Q><Q name=\"translation\"><V text=\"V*NNGYF\"/></Q></Feature></Features>\n"
+      },
+      {
+        "kind": 5,
+        "xml": "<?xml version=\"1.0\"?><Primers nextValidID=\"0\"><HybridizationParams minContinuousMatchLen=\"10\" allowMismatch=\"1\" minMeltingTemperature=\"40\" showAdditionalFivePrimeMatches=\"1\" minimumFivePrimeAnnealing=\"15\"/></Primers>\n"
+      },
+      {
+        "kind": 6,
+        "xml": "<Notes>\n<Type>Synthetic</Type>\n<ConfirmedExperimentally>0</ConfirmedExperimentally>\n<Description>Original synthetic fixture for native CDS reading-frame semantics.</Description>\n<AccessionNumber>POPGENE_FRAME_OFFSETS</AccessionNumber>\n<SequenceClass>UNA</SequenceClass>\n<TransformedInto>unspecified</TransformedInto>\n<Comments>Original PopGene synthetic data. Four overlapping CDSs deliberately exercise codon_start=1/2/3 and reverse codon_start=2. No cached translations are supplied. Expected table-1 amino acids in coding order: forward_1 MK*PLFHT, forward_2 *NNRYFI, forward_3 EITVISY, reverse_2 V*NNGYF. This fixture tests display, not biological ORFs.</Comments>\n</Notes>\n"
+      }
+    ],
+    "regression/reading-frames-shifted-native.dna": [
+      {
+        "kind": 9,
+        "hex": "536e617047656e650001000f0014"
+      },
+      {
+        "kind": 0,
+        "flags": 2,
+        "sequence": "atgaaataaccgttatttcatacg"
+      },
+      {
+        "kind": 10,
+        "xml": "<?xml version=\"1.0\"?><Features nextValidID=\"4\"><Feature recentID=\"0\" name=\"shift2_phase2\" directionality=\"1\" translationMW=\"823.94\" type=\"CDS\" allowSegmentOverlaps=\"0\" readingFrame=\"2\" consecutiveTranslationNumbering=\"1\" maxRunOn=\"24\" maxFusedRunOn=\"23\"><Segment range=\"2-23\" color=\"#993366\" type=\"standard\" translated=\"1\"/><Q name=\"codon_start\"><V int=\"2\"/></Q><Q name=\"label\"><V text=\"shift2_phase2\"/></Q><Q name=\"transl_table\"><V int=\"1\"/></Q><Q name=\"translation\"><V text=\"EITVISY\"/></Q></Feature><Feature recentID=\"1\" name=\"shift3_phase3\" directionality=\"1\" translationMW=\"825.92\" type=\"CDS\" allowSegmentOverlaps=\"0\" readingFrame=\"3\" consecutiveTranslationNumbering=\"1\" maxRunOn=\"24\" maxFusedRunOn=\"22\"><Segment range=\"3-22\" color=\"#993366\" type=\"standard\" translated=\"1\"/><Q name=\"codon_start\"><V int=\"3\"/></Q><Q name=\"label\"><V text=\"shift3_phase3\"/></Q><Q name=\"transl_table\"><V int=\"1\"/></Q><Q name=\"translation\"><V text=\"NNRYFI\"/></Q></Feature><Feature recentID=\"2\" name=\"reverse2_phase2\" directionality=\"2\" translationMW=\"823.94\" type=\"CDS\" swappedSegmentNumbering=\"1\" allowSegmentOverlaps=\"0\" readingFrame=\"-2\" consecutiveTranslationNumbering=\"1\" maxRunOn=\"1\" maxFusedRunOn=\"2\"><Segment range=\"2-23\" color=\"#993366\" type=\"standard\" translated=\"1\"/><Q name=\"codon_start\"><V int=\"2\"/></Q><Q name=\"label\"><V text=\"reverse2_phase2\"/></Q><Q name=\"transl_table\"><V int=\"1\"/></Q><Q name=\"translation\"><V text=\"YEITVIS\"/></Q></Feature><Feature recentID=\"3\" name=\"reverse3_phase3\" directionality=\"2\" translationMW=\"-1.00\" type=\"CDS\" swappedSegmentNumbering=\"1\" allowSegmentOverlaps=\"0\" readingFrame=\"-3\" consecutiveTranslationNumbering=\"1\" maxRunOn=\"1\" maxFusedRunOn=\"3\"><Segment range=\"3-22\" color=\"#993366\" type=\"standard\" translated=\"1\"/><Q name=\"codon_start\"><V int=\"3\"/></Q><Q name=\"label\"><V text=\"reverse3_phase3\"/></Q><Q name=\"transl_table\"><V int=\"1\"/></Q><Q name=\"translation\"><V text=\"*NNGYF\"/></Q></Feature></Features>\n"
+      },
+      {
+        "kind": 5,
+        "xml": "<?xml version=\"1.0\"?><Primers nextValidID=\"0\"><HybridizationParams minContinuousMatchLen=\"10\" allowMismatch=\"1\" minMeltingTemperature=\"40\" showAdditionalFivePrimeMatches=\"1\" minimumFivePrimeAnnealing=\"15\"/></Primers>\n"
+      },
+      {
+        "kind": 6,
+        "xml": "<Notes>\n<Type>Synthetic</Type>\n<ConfirmedExperimentally>0</ConfirmedExperimentally>\n<Description>Original synthetic fixture distinguishing relative and global frames.</Description>\n<AccessionNumber>POPGENE_SHIFTED_FRAMES</AccessionNumber>\n<SequenceClass>UNA</SequenceClass>\n<TransformedInto>unspecified</TransformedInto>\n<Comments>Original PopGene synthetic data. Shifted boundaries distinguish relative CDS codon_start offsets from global sequence reading frames. Expected table-1 amino acids in coding order (Biopython 1.88): shift2_phase2: EITVISY&lt;br>shift3_phase3: NNRYFI&lt;br>reverse2_phase2: YEITVIS&lt;br>reverse3_phase3: *NNGYF</Comments>\n</Notes>\n"
+      }
+    ],
+    "regression/segment-colours-native.dna": [
+      {
+        "kind": 9,
+        "hex": "536e617047656e650001000f0014"
+      },
+      {
+        "kind": 0,
+        "flags": 3,
+        "sequence": "acgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgtacgt"
+      },
+      {
+        "kind": 10,
+        "xml": "<?xml version=\"1.0\"?><Features nextValidID=\"1\"><Feature recentID=\"0\" name=\"two_colour_domains\" directionality=\"1\" type=\"misc_feature\" allowSegmentOverlaps=\"0\" consecutiveTranslationNumbering=\"1\"><Segment name=\"Red domain\" range=\"101-250\" color=\"#ff0000\" type=\"standard\"/><Segment name=\"Blue domain\" range=\"251-400\" color=\"#0000ff\" type=\"standard\"/><Q name=\"label\"><V text=\"two_colour_domains\"/></Q><Q name=\"note\"><V text=\"&lt;html&gt;&lt;body&gt;Original explanatory note; retained separately.&lt;/body&gt;&lt;/html&gt;\"/></Q></Feature></Features>\n"
+      },
+      {
+        "kind": 5,
+        "xml": "<?xml version=\"1.0\"?><Primers nextValidID=\"0\"><HybridizationParams minContinuousMatchLen=\"10\" allowMismatch=\"1\" minMeltingTemperature=\"40\" showAdditionalFivePrimeMatches=\"1\" minimumFivePrimeAnnealing=\"15\"/></Primers>\n"
+      },
+      {
+        "kind": 6,
+        "xml": "<Notes>\n<Type>Synthetic</Type>\n<ConfirmedExperimentally>0</ConfirmedExperimentally>\n<Description>Original synthetic two-colour segment display fixture.</Description>\n<AccessionNumber>POPGENESEGMENTS</AccessionNumber>\n<SequenceClass>UNA</SequenceClass>\n<TransformedInto>unspecified</TransformedInto>\n<References>\n<Reference authors=\"PopGene audit.\" journal=\"SnapGene GenBank format\" journalName=\"SnapGene GenBank format\" title=\"Direct Submission\" type=\"Journal Article\"/>\n</References>\n<Comments>Synthetic display data; not a biological construct.</Comments>\n</Notes>\n"
+      }
+    ]
+  }
+}
