@@ -19,6 +19,8 @@ Native syntax originated from serialization of these synthetic sequences by Snap
 
 `python3 validation/generate_native_fixtures.py` reproduces all five valid `.dna` files directly from JSON using the Python standard library. Add `--check` to verify checked-in bytes. Regeneration does not require SnapGene. The intentionally truncated parser-error fixture is generated separately by `generate_fixtures.py`.
 
+Use copies under the ignored `validation/results/` directory when opening fixtures in a desktop editor. Saving a checked-in fixture can append display or enzyme settings that are absent from `native-records.json`, causing the CI byte check to fail. Regenerate the canonical files before committing; preserve any intentional fixture changes in the JSON source.
+
 ABIF containers are written directly using Python `struct`. The calls are `ACGTN`, qualities 40/35/30/20/5 and peaks 2/5/8/11/14. Concrete-base signals contain amplitude-1000 peaks; they do not represent actual instrument output. `../prepare_trace_parameters.py` adds invented instrument tags for the regression example.
 
 The regression GenBank and protein files are hand-authored. Segment expectations and current fixture hashes are in `regression/segment-colours-manifest.json`. Independent translation, restriction and protein expectation scripts live in the parent directory. Generated reports, comparison captures and large scaling inputs are ignored by version control.
