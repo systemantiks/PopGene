@@ -41,4 +41,4 @@ Preserve pre-existing user changes, including `validation/fixtures/synthetic-pcr
 - Annotation reconstruction is bounded and requires valid identity, mappings and metadata. Canonical Save or reopen of an unpersisted seed may create a new identity. Physical-fragment comment extensions do not make other applications understand that supplemental data.
 - Trace precision/conversion and font-shaping limitations are reported explicitly. Experimental yield and measured secondary structure are not predicted.
 - **Windows runtime and MSVC checks are unavailable:** the user confirmed there is no Windows test machine or VM. GNU cross-checks are not substitutes.
-- Public distribution signing/notarization and unresolved third-party notice provenance are separate from the local ad-hoc build/install task; see [releases](releases.md) and [third-party notices](../THIRD_PARTY.md).
+- Public distribution signing/notarization and third-party notice provenance review are separate from the local ad-hoc build/install task; see [releases](releases.md) and [third-party notices](../THIRD_PARTY.md).
