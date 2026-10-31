@@ -2510,7 +2510,9 @@ pub(crate) mod tests {
     #[test]
     fn print_pages_render_in_memory_and_wait_for_the_dialog() {
         let mut model = two_tabs();
-        let document = Document::new("Print pages", &"ACGT".repeat(250)).unwrap();
+        // A short figure keeps this debug-build render well inside settle's deadline on
+        // slow CI runners. figure::pdf covers pagination of long sequences.
+        let document = Document::new("Print pages", &"ACGT".repeat(50)).unwrap();
         let svg = crate::sequence_figure::svg(
             &document,
             &Default::default(),
