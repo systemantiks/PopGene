@@ -13,6 +13,7 @@ mod feature_card;
 mod figure;
 mod figure_tools;
 mod forms;
+mod gel_view;
 mod gene_map;
 mod metadata_tools;
 mod model;
