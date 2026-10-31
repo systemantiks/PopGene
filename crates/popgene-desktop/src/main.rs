@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 extern crate gpui_kit as gpui;
-use gpui_kit::component::{Theme, ThemeMode, TitleBar, input};
+use gpui_kit::component::{Theme, ThemeMode, TitleBar};
 use gpui_kit::*;
 mod alignment_tools;
 mod app;
@@ -15,10 +15,12 @@ mod figure_tools;
 mod forms;
 mod gel_view;
 mod gene_map;
+mod menus;
 mod metadata_tools;
 mod model;
 mod open_dialog;
 mod primer_tools;
+mod print;
 mod protein_properties;
 mod sequence_figure;
 mod sequence_layout;
@@ -52,60 +54,8 @@ fn main() {
                 theme.colors.button_primary_active = rgb(0x30ad9f).into();
                 theme.colors.input = rgb(BG).into();
             });
-            let cmd = if cfg!(target_os = "macos") {
-                "cmd"
-            } else {
-                "ctrl"
-            };
-            cx.bind_keys([
-                KeyBinding::new(&format!("{cmd}-n"), NewSequence, Some("PopGene")),
-                KeyBinding::new(&format!("{cmd}-o"), OpenFiles, Some("PopGene")),
-                KeyBinding::new(&format!("{cmd}-shift-o"), OpenFolder, Some("PopGene")),
-                KeyBinding::new(&format!("{cmd}-s"), Save, Some("PopGene")),
-                KeyBinding::new(&format!("{cmd}-shift-s"), SaveAs, Some("PopGene")),
-                KeyBinding::new(&format!("{cmd}-e"), Export, Some("PopGene")),
-                KeyBinding::new(&format!("{cmd}-f"), FindSequence, Some("PopGene")),
-                KeyBinding::new(&format!("{cmd}-w"), CloseTab, Some("PopGene")),
-                KeyBinding::new(&format!("{cmd}-q"), Quit, Some("PopGene")),
-                KeyBinding::new(&format!("{cmd}-z"), Undo, Some("PopGene")),
-                KeyBinding::new(&format!("{cmd}-shift-z"), Redo, Some("PopGene")),
-            ]);
-            cx.bind_keys([
-                KeyBinding::new("ctrl-tab", NextTab, Some("PopGene")),
-                KeyBinding::new("ctrl-shift-tab", PreviousTab, Some("PopGene")),
-                KeyBinding::new("escape", Escape, Some("PopGene")),
-            ]);
-            cx.set_menus([
-                Menu::new("PopGene").items([
-                    MenuItem::action("Check for Updates…", CheckForUpdates),
-                    MenuItem::separator(),
-                    MenuItem::action("Quit PopGene", Quit),
-                ]),
-                Menu::new("File").items([
-                    MenuItem::action("New Sequence", NewSequence),
-                    MenuItem::action("Open…", OpenFiles),
-                    MenuItem::action("Open Folder…", OpenFolder),
-                    MenuItem::separator(),
-                    MenuItem::action("Save", Save),
-                    MenuItem::action("Save As…", SaveAs),
-                    MenuItem::action("Export…", Export),
-                    MenuItem::separator(),
-                    MenuItem::action("Close Tab", CloseTab),
-                ]),
-                Menu::new("Edit").items([
-                    MenuItem::action("Undo", Undo),
-                    MenuItem::action("Redo", Redo),
-                    MenuItem::separator(),
-                    // OS selectors keep standard editing shortcuts available
-                    // in native file panels as well as PopGene text controls.
-                    MenuItem::os_action("Cut", input::Cut, OsAction::Cut),
-                    MenuItem::os_action("Copy", input::Copy, OsAction::Copy),
-                    MenuItem::os_action("Paste", input::Paste, OsAction::Paste),
-                    MenuItem::os_action("Select All", input::SelectAll, OsAction::SelectAll),
-                    MenuItem::separator(),
-                    MenuItem::action("Find Sequence", FindSequence),
-                ]),
-            ]);
+            menus::bind_keys(cx);
+            menus::install(menus::MenuState::default(), cx);
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                     None,

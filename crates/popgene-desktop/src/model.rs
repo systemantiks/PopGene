@@ -178,11 +178,14 @@ pub struct Tab {
     pub error: bool,
     job: Option<Receiver<Result<Completed, String>>>,
     job_path: Option<PathBuf>,
+    /// A rendered PDF waiting for the platform print dialog.
+    pub printable: Option<Vec<u8>>,
 }
 
 enum Completed {
     Saved(Box<Document>, PathBuf, SaveFormat, [u8; 32]),
     Exported(PathBuf),
+    Printable(Vec<u8>),
 }
 
 pub struct PrimerEdit {
@@ -389,6 +392,7 @@ impl Tab {
             error: false,
             job: None,
             job_path: None,
+            printable: None,
         }
     }
     pub fn title(&self) -> String {
@@ -794,6 +798,10 @@ impl Tab {
                 ),
                 false,
             ),
+            Ok(Completed::Printable(pdf)) => {
+                self.printable = Some(pdf);
+                self.message("Opening print dialog…", false);
+            }
         }
         true
     }
@@ -1452,6 +1460,27 @@ impl Model {
             formats::atomic_export(&path, &bytes).map_err(|e| e.to_string())?;
             Ok(Completed::Exported(path))
         });
+        true
+    }
+    /// Renders print pages without a destination file; the UI takes `printable`.
+    pub fn print_figure(&mut self, index: usize, svg: String, page_height: Option<u32>) -> bool {
+        let Some(tab) = self.tabs.get_mut(index).filter(|tab| !tab.draft) else {
+            return false;
+        };
+        if tab.busy() {
+            tab.message("Wait for the current file operation to finish.", true);
+            return false;
+        }
+        tab.message("Preparing pages for printing…", false);
+        tab.job = Some(worker(move || {
+            crate::figure::encode_with_pages(
+                &svg,
+                crate::figure::FigureFormat::Pdf,
+                1.,
+                page_height,
+            )
+            .map(Completed::Printable)
+        }));
         true
     }
     pub fn request_close(&mut self, request: Close) -> bool {
@@ -2438,6 +2467,31 @@ pub(crate) mod tests {
             None,
         );
         model
+    }
+    #[test]
+    fn print_pages_render_in_memory_and_wait_for_the_dialog() {
+        let mut model = two_tabs();
+        let document = Document::new("Print pages", &"ACGT".repeat(250)).unwrap();
+        let svg = crate::sequence_figure::svg(
+            &document,
+            &Default::default(),
+            &[],
+            &[],
+            1000.,
+            100,
+            false,
+            None,
+        )
+        .unwrap();
+        assert!(model.print_figure(1, svg.clone(), Some(1300)));
+        assert!(model.tabs[1].busy());
+        assert!(model.tabs[1].job_path.is_none());
+        assert!(!model.print_figure(1, svg, Some(1300)));
+        settle(&mut model);
+        let pdf = model.tabs[1].printable.take().unwrap();
+        assert!(pdf.starts_with(b"%PDF-"));
+        assert_eq!(model.tabs[1].status, "Opening print dialog…");
+        assert!(model.tabs[0].printable.is_none());
     }
     #[test]
     fn creation_draft_is_independent_and_background_close_targets_it() {

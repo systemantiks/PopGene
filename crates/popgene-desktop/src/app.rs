@@ -16,7 +16,7 @@ use gpui_kit::component::{
     button::*,
     hover_card::HoverCard,
     input::{Input, InputEvent, InputState, Textarea, TextareaState},
-    menu::{DropdownMenu, PopupMenuItem},
+    menu::{AppMenuBar, DropdownMenu, PopupMenuItem},
     tab::{Tab as ViewTab, TabBar},
     *,
 };
@@ -53,9 +53,80 @@ actions!(
         NextTab,
         PreviousTab,
         FindSequence,
-        Escape
+        Escape,
+        About,
+        ExportFigure,
+        Print,
+        FindNext,
+        FindPrevious,
+        SelectRange,
+        ViewMap,
+        ViewSequence,
+        ViewSplit,
+        ViewEnzymes,
+        ViewFeatures,
+        ViewPrimers,
+        ViewTrace,
+        ViewParameters,
+        ViewProperties,
+        ViewHistory,
+        ToggleNavigator,
+        EditSequence,
+        ReverseComplement,
+        ToggleTopology,
+        CloningTools,
+        DigestTools,
+        AlignmentTools,
+        DuplexView,
+        TraceTools,
+        ProteinTools,
+        MetadataTools,
+        AddFeature,
+        ToggleFeatureLayer,
+        AddPrimer,
+        EditPrimer,
+        TogglePrimerLayer,
+        UseAllEnzymes,
+        ChooseEnzymes,
+        FilterUniqueSix,
+        FilterUnique,
+        FilterOneOrTwo,
+        FilterAllSix,
+        FilterAll,
+        ToggleSiteLayer
     ]
 );
+
+/// Display layers that the map and sequence panes share by name.
+#[derive(Clone, Copy)]
+enum Layer {
+    Features,
+    Primers,
+    Sites,
+}
+
+/// Document views in tab order, limited to those the document supports.
+fn views(doc: &Document) -> Vec<(View, &'static str)> {
+    [
+        (View::Map, "Map"),
+        (View::Sequence, "Sequence"),
+        (View::Enzymes, "Enzymes"),
+        (View::Features, "Features"),
+        (View::Primers, "Primers"),
+        (View::Trace, "Trace"),
+        (View::Parameters, "Parameters"),
+        (View::Properties, "Properties"),
+        (View::History, "History"),
+    ]
+    .into_iter()
+    .filter(|(v, _)| {
+        (!matches!(v, View::Trace | View::Parameters) || doc.trace.is_some())
+            && (*v != View::Properties || doc.molecule == Molecule::Protein)
+            && (*v != View::Primers || doc.molecule != Molecule::Protein)
+            && (*v != View::Enzymes || doc.molecule == Molecule::Dna)
+    })
+    .collect()
+}
 
 struct TabUi {
     creator: Option<Entity<Creator>>,
@@ -138,6 +209,8 @@ pub struct PopGene {
     navigator: bool,
     modal: Option<Modal>,
     pending_figure: Option<u64>,
+    /// The postponed figure dialog prints instead of exporting.
+    pending_print: bool,
     polling: bool,
     file_dialog_open: bool,
     creator_dialog_draft: Option<(u64, bool)>,
@@ -152,6 +225,9 @@ pub struct PopGene {
     session: Option<crate::session::Session>,
     restored_options: HashMap<u64, SequenceOptions>,
     restored_drafts: HashMap<u64, crate::forms::CreatorDraft>,
+    menu_state: Option<crate::menus::MenuState>,
+    /// Windows and Linux draw the application menus in the title bar.
+    menu_bar: Option<Entity<AppMenuBar>>,
 }
 
 impl PopGene {
@@ -209,6 +285,7 @@ impl PopGene {
             navigator: true,
             modal: None,
             pending_figure: None,
+            pending_print: false,
             polling: false,
             file_dialog_open: false,
             creator_dialog_draft: None,
@@ -220,6 +297,8 @@ impl PopGene {
             session,
             restored_options,
             restored_drafts,
+            menu_state: None,
+            menu_bar: (!cfg!(target_os = "macos")).then(|| AppMenuBar::new(cx)),
         };
         this.model.open_paths(paths);
         this.wake(cx);
@@ -346,6 +425,16 @@ impl PopGene {
         .detach();
     }
 
+    fn print_ready(&mut self) {
+        for tab in &mut self.model.tabs {
+            if let Some(pdf) = tab.printable.take() {
+                match crate::print::print_pdf(&pdf, &tab.editor.document.name) {
+                    Ok(message) => tab.message(message, false),
+                    Err(error) => tab.message(error, true),
+                }
+            }
+        }
+    }
     fn finish_quit(&mut self, cx: &mut Context<Self>) {
         if self.model.allow_close {
             let snapshot = self.recovery_snapshot(cx);
@@ -400,6 +489,7 @@ impl PopGene {
                         if this.model.poll() {
                             cx.notify();
                         }
+                        this.print_ready();
                         this.finish_quit(cx);
                         let busy = this.model.has_background_work();
                         if !busy {
@@ -1444,7 +1534,7 @@ impl PopGene {
                 )
                 .item(PopupMenuItem::new("Figure (SVG / PDF / PNG)…").on_click(
                     move |_, window, cx| {
-                        let _ = figure.update(cx, |this, cx| this.figure_tools(window, cx));
+                        let _ = figure.update(cx, |this, cx| this.figure_tools(false, window, cx));
                     },
                 ))
             })
@@ -1453,12 +1543,7 @@ impl PopGene {
     fn toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = self.model.current();
         let editable = self.mutable();
-        let nucleotide = editable
-            && t.is_some_and(|t| {
-                t.editor.document.molecule != Molecule::Protein
-                    && t.editor.document.trace.is_none()
-                    && !t.editor.document.placeholder
-            });
+        let nucleotide = self.nucleotide();
         div()
             .h_flex()
             .h(px(52.))
@@ -1494,12 +1579,7 @@ impl PopGene {
                     .small()
                     .label("Reverse complement")
                     .disabled(!nucleotide)
-                    .on_click(cx.listener(|s, _, _, cx| {
-                        if let Some(t) = s.model.current_mut() {
-                            t.apply(Document::revcomp);
-                        }
-                        cx.notify();
-                    })),
+                    .on_click(cx.listener(|s, _, _, cx| s.reverse_complement(cx))),
             )
             .child(
                 Button::new("topology")
@@ -1511,19 +1591,35 @@ impl PopGene {
                         "Linear"
                     })
                     .disabled(!nucleotide)
-                    .on_click(cx.listener(|s, _, _, cx| {
-                        if let Some(t) = s.model.current_mut() {
-                            t.apply(|d| {
-                                d.circular = !d.circular;
-                                Ok(())
-                            });
-                        }
-                        cx.notify();
-                    })),
+                    .on_click(cx.listener(|s, _, _, cx| s.toggle_topology(cx))),
             )
             .child(div().flex_1())
             .child(self.export_button(cx))
             .into_any_element()
+    }
+    /// Editable nucleotide sequences support strand and topology changes.
+    fn nucleotide(&self) -> bool {
+        self.mutable()
+            && self.model.current().is_some_and(|t| {
+                t.editor.document.molecule != Molecule::Protein
+                    && t.editor.document.trace.is_none()
+                    && !t.editor.document.placeholder
+            })
+    }
+    fn reverse_complement(&mut self, cx: &mut Context<Self>) {
+        if self.nucleotide() {
+            self.model.current_mut().unwrap().apply(Document::revcomp);
+            cx.notify();
+        }
+    }
+    fn toggle_topology(&mut self, cx: &mut Context<Self>) {
+        if self.nucleotide() {
+            self.model.current_mut().unwrap().apply(|d| {
+                d.circular = !d.circular;
+                Ok(())
+            });
+            cx.notify();
+        }
     }
     fn tabs(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let active = self.model.current().map(|t| t.id);
@@ -1890,25 +1986,7 @@ impl PopGene {
                 .into_any_element();
         }
         let doc = &t.editor.document;
-        let views: Vec<_> = [
-            (View::Map, "Map"),
-            (View::Sequence, "Sequence"),
-            (View::Enzymes, "Enzymes"),
-            (View::Features, "Features"),
-            (View::Primers, "Primers"),
-            (View::Trace, "Trace"),
-            (View::Parameters, "Parameters"),
-            (View::Properties, "Properties"),
-            (View::History, "History"),
-        ]
-        .into_iter()
-        .filter(|(v, _)| {
-            (!matches!(v, View::Trace | View::Parameters) || doc.trace.is_some())
-                && (*v != View::Properties || doc.molecule == Molecule::Protein)
-                && (*v != View::Primers || doc.molecule != Molecule::Protein)
-                && (*v != View::Enzymes || doc.molecule == Molecule::Dna)
-        })
-        .collect();
+        let views = views(doc);
         let selected = views
             .iter()
             .position(|(view, _)| *view == t.view || (*view == View::Map && t.view == View::Split))
@@ -1923,15 +2001,7 @@ impl PopGene {
             .children(views.into_iter().map(|(view, label)| {
                 ViewTab::new()
                     .label(label)
-                    .on_click(cx.listener(move |s, _, w, cx| {
-                        if !s.blocked() {
-                            if let Some(t) = s.model.current_mut() {
-                                t.view = view;
-                            }
-                            s.focus.focus(w, cx);
-                            cx.notify();
-                        }
-                    }))
+                    .on_click(cx.listener(move |s, _, w, cx| s.set_view(view, w, cx)))
             }));
         let title = div()
             .h_flex()
@@ -2058,19 +2128,303 @@ impl PopGene {
             .selected(t.view == View::Split)
             .toggled(t.view == View::Split)
             .disabled(t.editor.document.placeholder)
-            .on_click(cx.listener(|s, _, w, cx| {
-                if !s.blocked() {
-                    if let Some(t) = s.model.current_mut() {
-                        t.view = if t.view == View::Split {
-                            View::Map
-                        } else {
-                            View::Split
-                        };
-                    }
-                    s.focus.focus(w, cx);
+            .on_click(cx.listener(|s, _, w, cx| s.toggle_split(w, cx)))
+    }
+    fn set_view(&mut self, view: View, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.blocked() {
+            if let Some(t) = self.model.current_mut() {
+                t.view = view;
+            }
+            self.focus.focus(window, cx);
+            cx.notify();
+        }
+    }
+    fn toggle_split(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let split = self.model.current().is_some_and(|t| t.view == View::Split);
+        self.set_view(if split { View::Map } else { View::Split }, window, cx);
+    }
+    /// Whether a layer shows in every visible map or sequence pane; None when
+    /// no visible pane offers it.
+    fn layer_state(&self, layer: Layer) -> Option<bool> {
+        let t = self
+            .model
+            .current()
+            .filter(|t| !t.draft && !t.editor.document.placeholder)?;
+        let options = self.ui.get(&t.id)?.sequence_options;
+        let available = match layer {
+            Layer::Features => true,
+            Layer::Primers => t.editor.document.molecule != Molecule::Protein,
+            Layer::Sites => t.restriction_eligible(),
+        };
+        let map = t.view.has_map().then_some(match layer {
+            Layer::Features => t.show_features,
+            Layer::Primers => t.show_primers,
+            Layer::Sites => t.show_sites,
+        });
+        let sequence = t.view.has_sequence().then_some(match layer {
+            Layer::Features => options.show_features,
+            Layer::Primers => options.show_primers,
+            Layer::Sites => options.show_enzymes,
+        });
+        (available && (map.is_some() || sequence.is_some()))
+            .then(|| map.unwrap_or(true) && sequence.unwrap_or(true))
+    }
+    fn toggle_layer(&mut self, layer: Layer, cx: &mut Context<Self>) {
+        if self.blocked() {
+            return;
+        }
+        let Some(shown) = self.layer_state(layer) else {
+            return;
+        };
+        let t = self.model.current_mut().unwrap();
+        if t.view.has_map() {
+            *match layer {
+                Layer::Features => &mut t.show_features,
+                Layer::Primers => &mut t.show_primers,
+                Layer::Sites => &mut t.show_sites,
+            } = !shown;
+        }
+        if t.view.has_sequence()
+            && let Some(ui) = self.ui.get_mut(&t.id)
+        {
+            let options = &mut ui.sequence_options;
+            *match layer {
+                Layer::Features => &mut options.show_features,
+                Layer::Primers => &mut options.show_primers,
+                Layer::Sites => &mut options.show_enzymes,
+            } = !shown;
+        }
+        cx.notify();
+    }
+    fn set_enzyme_filter(&mut self, filter: Option<EnzymeFilter>, cx: &mut Context<Self>) {
+        if !self.blocked()
+            && let Some(t) = self.model.current_mut()
+        {
+            match filter {
+                Some(filter) => t.enzyme_filter = filter,
+                None => t.custom_enzyme_names = None,
+            }
+            cx.notify();
+        }
+    }
+    fn focus_range(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.blocked()
+            && let Some(t) = self.model.current_mut()
+        {
+            t.show_sequence();
+            self.ui[&t.id]
+                .start
+                .read(cx)
+                .focus_handle(cx)
+                .focus(window, cx);
+            cx.notify();
+        }
+    }
+    fn menu_state(&self) -> crate::menus::MenuState {
+        let t = self.model.current().filter(|t| !t.draft);
+        crate::menus::MenuState {
+            view: t.map(|t| t.view),
+            features: self.layer_state(Layer::Features) == Some(true),
+            primers: self.layer_state(Layer::Primers) == Some(true),
+            sites: self.layer_state(Layer::Sites) == Some(true),
+            circular: t.is_some_and(|t| t.editor.document.circular),
+            navigator: self.navigator,
+            enzymes: t
+                .filter(|t| t.restriction_eligible())
+                .map(|t| (t.enzyme_filter, t.custom_enzyme_names.is_some())),
+        }
+    }
+    /// Registers only the menu commands that apply now, so the menu bar disables the rest.
+    fn menu_actions(&self, root: Stateful<Div>, cx: &mut Context<Self>) -> Stateful<Div> {
+        let blocked = self.blocked();
+        let mutable = self.mutable();
+        let tab = self.model.current().filter(|t| !t.draft && !blocked);
+        let doc = tab.map(|t| &t.editor.document);
+        let real = doc.is_some_and(|d| !d.placeholder);
+        let dna = real
+            && doc.is_some_and(|d| {
+                d.molecule == Molecule::Dna && !d.single_stranded && d.trace.is_none()
+            });
+        let trace = doc.is_some_and(|d| d.trace.is_some());
+        let nucleotide = doc.is_some_and(|d| d.molecule != Molecule::Protein);
+        let views = doc.map(views).unwrap_or_default();
+        let view = |view| views.iter().any(|(v, _)| *v == view);
+        let enzymes = tab.is_some_and(|t| t.restriction_eligible());
+        let primer = tab.is_some_and(|t| {
+            t.editor
+                .document
+                .features
+                .iter()
+                .any(|f| Some(f.id) == t.feature && f.kind == "primer_bind")
+        });
+        root.when(!blocked, |d| {
+            d.on_action(cx.listener(|s, _: &About, _, cx| {
+                s.modal = Some(Modal::About);
+                cx.notify();
+            }))
+        })
+        .on_action(cx.listener(|s, _: &ToggleNavigator, _, cx| {
+            s.navigator = !s.navigator;
+            cx.notify();
+        }))
+        .when(mutable && tab.is_some_and(|t| t.editor.can_undo()), |d| {
+            d.on_action(cx.listener(|s, _: &Undo, _, cx| {
+                if s.mutable() {
+                    s.model.current_mut().unwrap().undo();
                     cx.notify();
                 }
             }))
+        })
+        .when(mutable && tab.is_some_and(|t| t.editor.can_redo()), |d| {
+            d.on_action(cx.listener(|s, _: &Redo, _, cx| {
+                if s.mutable() {
+                    s.model.current_mut().unwrap().redo();
+                    cx.notify();
+                }
+            }))
+        })
+        .when(tab.is_some_and(|t| !t.selected.is_empty()), |d| {
+            d.on_action(cx.listener(|s, _: &input::Copy, w, cx| {
+                // Selected label text takes precedence; the window root copies it.
+                if !gpui_kit::base::TextSelection::selected_text(w, cx)
+                    .trim()
+                    .is_empty()
+                {
+                    cx.propagate();
+                } else if !s.blocked()
+                    && let Some(t) = s.model.current()
+                {
+                    cx.write_to_clipboard(ClipboardItem::new_string(t.selected_sequence()));
+                }
+            }))
+        })
+        .when(mutable && real, |d| {
+            d.on_action(cx.listener(|s, _: &ExportFigure, w, cx| s.figure_tools(false, w, cx)))
+                .on_action(cx.listener(|s, _: &Print, w, cx| s.figure_tools(true, w, cx)))
+        })
+        .when(tab.is_some_and(|t| !t.hits.is_empty()), |d| {
+            d.on_action(cx.listener(|s, _: &FindNext, _, cx| {
+                if !s.blocked() {
+                    s.model.current_mut().unwrap().next_hit();
+                    cx.notify();
+                }
+            }))
+            .on_action(cx.listener(|s, _: &FindPrevious, _, cx| {
+                if !s.blocked() {
+                    s.model.current_mut().unwrap().previous_hit();
+                    cx.notify();
+                }
+            }))
+        })
+        .when(real, |d| {
+            d.on_action(cx.listener(|s, _: &SelectRange, w, cx| s.focus_range(w, cx)))
+                .on_action(cx.listener(|s, _: &ViewSplit, w, cx| s.toggle_split(w, cx)))
+                .on_action(cx.listener(|s, _: &AlignmentTools, w, cx| s.alignment_tools(w, cx)))
+        })
+        .when(view(View::Map), |d| {
+            d.on_action(cx.listener(|s, _: &ViewMap, w, cx| s.set_view(View::Map, w, cx)))
+        })
+        .when(view(View::Sequence), |d| {
+            d.on_action(cx.listener(|s, _: &ViewSequence, w, cx| s.set_view(View::Sequence, w, cx)))
+        })
+        .when(view(View::Enzymes), |d| {
+            d.on_action(cx.listener(|s, _: &ViewEnzymes, w, cx| s.set_view(View::Enzymes, w, cx)))
+        })
+        .when(view(View::Features), |d| {
+            d.on_action(cx.listener(|s, _: &ViewFeatures, w, cx| s.set_view(View::Features, w, cx)))
+        })
+        .when(view(View::Primers), |d| {
+            d.on_action(cx.listener(|s, _: &ViewPrimers, w, cx| s.set_view(View::Primers, w, cx)))
+        })
+        .when(view(View::Trace), |d| {
+            d.on_action(cx.listener(|s, _: &ViewTrace, w, cx| s.set_view(View::Trace, w, cx)))
+        })
+        .when(view(View::Parameters), |d| {
+            d.on_action(
+                cx.listener(|s, _: &ViewParameters, w, cx| s.set_view(View::Parameters, w, cx)),
+            )
+        })
+        .when(view(View::Properties), |d| {
+            d.on_action(
+                cx.listener(|s, _: &ViewProperties, w, cx| s.set_view(View::Properties, w, cx)),
+            )
+        })
+        .when(view(View::History), |d| {
+            d.on_action(cx.listener(|s, _: &ViewHistory, w, cx| s.set_view(View::History, w, cx)))
+        })
+        .when(mutable && !trace, |d| {
+            d.on_action(cx.listener(|s, _: &EditSequence, w, cx| s.edit(w, cx)))
+        })
+        .when(self.nucleotide(), |d| {
+            d.on_action(cx.listener(|s, _: &ReverseComplement, _, cx| s.reverse_complement(cx)))
+                .on_action(cx.listener(|s, _: &ToggleTopology, _, cx| s.toggle_topology(cx)))
+        })
+        .when(dna, |d| {
+            d.on_action(cx.listener(|s, _: &CloningTools, w, cx| s.cloning_tools(w, cx)))
+        })
+        .when(dna && mutable, |d| {
+            d.on_action(cx.listener(|s, _: &DigestTools, w, cx| s.digest_tools(w, cx)))
+        })
+        .when(doc.is_some_and(|d| d.duplex_ends.is_some()), |d| {
+            d.on_action(cx.listener(|s, _: &DuplexView, w, cx| s.duplex_view(w, cx)))
+        })
+        .when(mutable && trace, |d| {
+            d.on_action(cx.listener(|s, _: &TraceTools, w, cx| s.trace_tools(w, cx)))
+        })
+        .when(real && !nucleotide, |d| {
+            d.on_action(cx.listener(|s, _: &ProteinTools, w, cx| s.protein_tools(w, cx)))
+        })
+        .when(mutable, |d| {
+            d.on_action(cx.listener(|s, _: &MetadataTools, w, cx| s.metadata_tools(w, cx)))
+        })
+        .when(
+            mutable && !trace && tab.is_some_and(|t| t.selected.len() == 1),
+            |d| d.on_action(cx.listener(|s, _: &AddFeature, w, cx| s.annotate(w, cx))),
+        )
+        .when(mutable && real && nucleotide, |d| {
+            d.on_action(cx.listener(|s, _: &AddPrimer, w, cx| s.primer_tools(false, w, cx)))
+        })
+        .when(mutable && primer, |d| {
+            d.on_action(cx.listener(|s, _: &EditPrimer, w, cx| s.primer_tools(true, w, cx)))
+        })
+        .when(self.layer_state(Layer::Features).is_some(), |d| {
+            d.on_action(
+                cx.listener(|s, _: &ToggleFeatureLayer, _, cx| s.toggle_layer(Layer::Features, cx)),
+            )
+        })
+        .when(self.layer_state(Layer::Primers).is_some(), |d| {
+            d.on_action(
+                cx.listener(|s, _: &TogglePrimerLayer, _, cx| s.toggle_layer(Layer::Primers, cx)),
+            )
+        })
+        .when(self.layer_state(Layer::Sites).is_some(), |d| {
+            d.on_action(
+                cx.listener(|s, _: &ToggleSiteLayer, _, cx| s.toggle_layer(Layer::Sites, cx)),
+            )
+        })
+        .when(enzymes, |d| {
+            d.on_action(cx.listener(|s, _: &ChooseEnzymes, w, cx| {
+                if let Some(id) = s.model.current().map(|t| t.id) {
+                    s.enzyme_selection(id, w, cx);
+                }
+            }))
+            .on_action(cx.listener(|s, _: &UseAllEnzymes, _, cx| s.set_enzyme_filter(None, cx)))
+            .on_action(cx.listener(|s, _: &FilterUniqueSix, _, cx| {
+                s.set_enzyme_filter(Some(EnzymeFilter::UniqueSix), cx)
+            }))
+            .on_action(cx.listener(|s, _: &FilterUnique, _, cx| {
+                s.set_enzyme_filter(Some(EnzymeFilter::Unique), cx)
+            }))
+            .on_action(cx.listener(|s, _: &FilterOneOrTwo, _, cx| {
+                s.set_enzyme_filter(Some(EnzymeFilter::OneOrTwo), cx)
+            }))
+            .on_action(cx.listener(|s, _: &FilterAllSix, _, cx| {
+                s.set_enzyme_filter(Some(EnzymeFilter::AllSix), cx)
+            }))
+            .on_action(cx.listener(|s, _: &FilterAll, _, cx| {
+                s.set_enzyme_filter(Some(EnzymeFilter::All), cx)
+            }))
+        })
     }
     fn split_content(&self, cx: &mut Context<Self>) -> AnyElement {
         let t = self.model.current().unwrap();
@@ -3356,7 +3710,7 @@ impl PopGene {
         cx.notify();
     }
 
-    fn figure_tools(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn figure_tools(&mut self, print: bool, window: &mut Window, cx: &mut Context<Self>) {
         if !self.mutable() {
             return;
         }
@@ -3376,9 +3730,14 @@ impl PopGene {
                 set_visible_status(&mut self.model, message, true);
             } else {
                 self.pending_figure = Some(tab.id);
+                self.pending_print = print;
                 set_visible_status(
                     &mut self.model,
-                    "Preparing restriction sites for figure export…",
+                    if print {
+                        "Preparing restriction sites for printing…"
+                    } else {
+                        "Preparing restriction sites for figure export…"
+                    },
                     false,
                 );
             }
@@ -3405,10 +3764,19 @@ impl PopGene {
             selected: tab.selected.clone(),
             feature: tab.feature,
         };
-        let form = cx.new(|cx| crate::figure_tools::FigureTools::new(context, window, cx));
+        let print = print.then_some(tab.view == View::Sequence);
+        let form = cx.new(|cx| crate::figure_tools::FigureTools::new(context, print, window, cx));
         cx.subscribe_in(&form, window, move |this, _, event, window, cx| {
             match event {
                 crate::figure_tools::FigureEvent::Cancel => this.modal = None,
+                crate::figure_tools::FigureEvent::Print { svg, page_height } => {
+                    if let Some(index) = this.model.tabs.iter().position(|t| t.id == tab_id) {
+                        this.model.print_figure(index, svg.clone(), *page_height);
+                    }
+                    this.modal = None;
+                    this.focus.focus(window, cx);
+                    this.wake(cx);
+                }
                 crate::figure_tools::FigureEvent::Export {
                     svg,
                     format,
@@ -4074,6 +4442,17 @@ impl Render for PopGene {
             self.wake(cx);
         }
         self.sync_ui(window, cx);
+        let menu_state = self.menu_state();
+        if self.menu_state != Some(menu_state) {
+            self.menu_state = Some(menu_state);
+            let bar = self.menu_bar.clone();
+            cx.defer(move |cx| {
+                crate::menus::install(menu_state, cx);
+                if let Some(bar) = bar {
+                    bar.update(cx, |bar, cx| bar.reload(cx));
+                }
+            });
+        }
         if self.pending_figure.is_some()
             && self
                 .model
@@ -4081,7 +4460,7 @@ impl Render for PopGene {
                 .is_some_and(|tab| tab.restriction.is_some() || tab.restriction_error.is_some())
         {
             self.pending_figure = None;
-            self.figure_tools(window, cx);
+            self.figure_tools(self.pending_print, window, cx);
         }
         let tabs = self.tabs(cx);
         let toolbar = self.toolbar(cx);
@@ -4175,18 +4554,7 @@ impl Render for PopGene {
             }))
             .on_action(cx.listener(|s, _: &Quit, _, cx| s.request_quit(cx)))
             .on_action(cx.listener(|s, _: &CheckForUpdates, _, cx| s.check_for_updates(cx)))
-            .on_action(cx.listener(|s, _: &Undo, _, cx| {
-                if s.mutable() {
-                    s.model.current_mut().unwrap().undo();
-                    cx.notify();
-                }
-            }))
-            .on_action(cx.listener(|s, _: &Redo, _, cx| {
-                if s.mutable() {
-                    s.model.current_mut().unwrap().redo();
-                    cx.notify();
-                }
-            }))
+            .map(|root| self.menu_actions(root, cx))
             .on_action(cx.listener(|s, _: &NextTab, w, cx| s.cycle(true, w, cx)))
             .on_action(cx.listener(|s, _: &PreviousTab, w, cx| s.cycle(false, w, cx)))
             .on_action(cx.listener(|s, _: &FindSequence, w, cx| {
@@ -4236,6 +4604,7 @@ impl Render for PopGene {
                                 .text_color(rgb(ACCENT))
                                 .child("PopGene"),
                         )
+                        .children(self.menu_bar.clone())
                         .child(
                             Button::new("navigator")
                                 .accessibility_label("Toggle project navigator")

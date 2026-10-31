@@ -22,7 +22,7 @@ These checked items mean the supported implementations exist. The limitations be
 - [x] Optimized macOS packaging, code-signature verification and launch of `dist/PopGene.app`; Grimsley and stable uncolored-primer fallback native UI acceptance passed.
 - [x] Optimized macOS Open cancellation/retry, multiple-file opening and saved-copy reopen passed after restarting the isolated test app. The earlier invisible-panel stall remains an intermittent issue with undetermined cause.
 - [x] Final circular-RNA correction: 172 formats tests, strict scoped Clippy, formatting and exact reference-created RNA import/byte-identical re-encode passed. The full macOS/Linux baseline and Windows cross-checks were not rerun for this narrow correction.
-- [x] README separates verified behavior from pending checks and unsupported capabilities without competitor naming.
+- [x] [Status and verification](status.md) separates verified behavior from pending checks and unsupported capabilities without competitor naming; the README links to it.
 
 The evidence proves these cases, not every format field or workflow. Existing detailed checks need not be repeated unless a subsequent change affects them.
 
