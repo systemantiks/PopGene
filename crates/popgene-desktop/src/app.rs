@@ -76,6 +76,7 @@ actions!(
         ToggleTopology,
         CloningTools,
         DigestTools,
+        SimulateGel,
         AlignmentTools,
         DuplexView,
         TraceTools,
@@ -163,6 +164,7 @@ enum Modal {
     UpdateInfo(String),
     PrimerTools(Entity<crate::primer_tools::PrimerTools>),
     DigestTools(Entity<crate::digest_tools::DigestTools>),
+    GelTools(Entity<crate::gel_tools::GelTools>),
     AlignmentTools(Entity<crate::alignment_tools::AlignmentTools>),
     ProteinTools(Entity<crate::protein_properties::ProteinTools>),
     TraceTools(Entity<crate::trace_tools::TraceTools>),
@@ -195,6 +197,17 @@ enum SaveIntent {
         format: crate::figure::FigureFormat,
         scale: f32,
         page_height: Option<u32>,
+    },
+    /// Gel exports keep the gel tool open.
+    GelFigure {
+        tab_id: u64,
+        svg: String,
+        format: crate::figure::FigureFormat,
+        scale: f32,
+    },
+    GelFile {
+        tab_id: u64,
+        json: String,
     },
 }
 
@@ -711,7 +724,9 @@ impl PopGene {
                         | SaveIntent::Export { tab_id, .. }
                         | SaveIntent::Original { tab_id }
                         | SaveIntent::Attachment { tab_id, .. }
-                        | SaveIntent::Figure { tab_id, .. } => tab_id,
+                        | SaveIntent::Figure { tab_id, .. }
+                        | SaveIntent::GelFigure { tab_id, .. }
+                        | SaveIntent::GelFile { tab_id, .. } => tab_id,
                     };
                     // Imports may finish while the sheet is open, changing active/index.
                     // Always resolve the original document identity on completion.
@@ -770,6 +785,20 @@ impl PopGene {
                                 ) {
                                     this.modal = None;
                                 }
+                            }
+                            SaveIntent::GelFigure {
+                                svg, format, scale, ..
+                            } => {
+                                this.model
+                                    .export_figure_to(i, path, svg, format, scale, None);
+                            }
+                            SaveIntent::GelFile { json, .. } => {
+                                this.model.export_bytes_to(
+                                    i,
+                                    path,
+                                    json.into_bytes(),
+                                    popgene_core::gel::GEL_EXTENSION,
+                                );
                             }
                         }
                     }
@@ -2365,6 +2394,9 @@ impl PopGene {
         .when(dna && mutable, |d| {
             d.on_action(cx.listener(|s, _: &DigestTools, w, cx| s.digest_tools(w, cx)))
         })
+        .when(dna, |d| {
+            d.on_action(cx.listener(|s, _: &SimulateGel, w, cx| s.gel_tools(None, w, cx)))
+        })
         .when(doc.is_some_and(|d| d.duplex_ends.is_some()), |d| {
             d.on_action(cx.listener(|s, _: &DuplexView, w, cx| s.duplex_view(w, cx)))
         })
@@ -3541,6 +3573,88 @@ impl PopGene {
         self.modal = Some(Modal::DigestTools(form));
         cx.notify();
     }
+    /// Opens the gel tool. Without lanes it starts from the saved defaults with
+    /// the current document loaded uncut.
+    fn gel_tools(
+        &mut self,
+        lanes: Option<Vec<popgene_core::gel::LaneSpec>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.blocked() {
+            return;
+        }
+        let Some(tab) = self.model.current().filter(|t| !t.draft) else {
+            return;
+        };
+        let tab_id = tab.id;
+        let current = tab.editor.document.clone();
+        let mut tabs = self
+            .model
+            .tabs
+            .iter()
+            .filter(|t| {
+                !t.draft
+                    && popgene_core::gel::SampleDocument::from_document(&t.editor.document).is_ok()
+            })
+            .collect::<Vec<_>>();
+        tabs.sort_by_key(|t| t.id != tab_id);
+        let documents = tabs
+            .into_iter()
+            .map(|t| t.editor.document.clone())
+            .collect::<Vec<_>>();
+        let defaults = crate::gel_view::GelDefaults::load();
+        let lanes =
+            lanes.unwrap_or_else(|| crate::gel_tools::default_lanes(&defaults, &[&current]));
+        let name = format!("{} gel", current.name);
+        let form = cx.new(|cx| {
+            crate::gel_tools::GelTools::new(name, documents, lanes, defaults, window, cx)
+        });
+        cx.subscribe_in(&form, window, move |this, _, event, window, cx| {
+            use crate::gel_tools::GelEvent;
+            match event {
+                GelEvent::Cancel => this.modal = None,
+                GelEvent::Dialog(open) => this.file_dialog_open = *open,
+                GelEvent::Export {
+                    svg,
+                    format,
+                    scale,
+                    name,
+                } => this.choose_save_path(
+                    SaveIntent::GelFigure {
+                        tab_id,
+                        svg: svg.clone(),
+                        format: *format,
+                        scale: *scale,
+                    },
+                    format!("{}.{}", safe_name(name), format.extension()),
+                    Some(format.extension()),
+                    window,
+                    cx,
+                ),
+                GelEvent::Save { json, name } => this.choose_save_path(
+                    SaveIntent::GelFile {
+                        tab_id,
+                        json: json.clone(),
+                    },
+                    format!("{}.{}", safe_name(name), popgene_core::gel::GEL_EXTENSION),
+                    Some(popgene_core::gel::GEL_EXTENSION),
+                    window,
+                    cx,
+                ),
+                GelEvent::Print { svg } => {
+                    if let Some(index) = this.model.tabs.iter().position(|t| t.id == tab_id) {
+                        this.model.print_figure(index, svg.clone(), None);
+                    }
+                    this.wake(cx);
+                }
+            }
+            cx.notify();
+        })
+        .detach();
+        self.modal = Some(Modal::GelTools(form));
+        cx.notify();
+    }
     fn alignment_tools(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.blocked() {
             return;
@@ -3830,9 +3944,14 @@ impl PopGene {
                 cx,
             )
         });
-        cx.subscribe(&form, |this, form, event, cx| {
+        cx.subscribe_in(&form, window, |this, form, event, window, cx| {
             match event {
                 crate::cloning_tools::CloningEvent::Cancel => this.modal = None,
+                crate::cloning_tools::CloningEvent::ShowGel(document) => {
+                    let defaults = crate::gel_view::GelDefaults::load();
+                    let lanes = crate::gel_tools::default_lanes(&defaults, &[document.as_ref()]);
+                    this.gel_tools(Some(lanes), window, cx);
+                }
                 crate::cloning_tools::CloningEvent::Create(document) => {
                     match this.model.add_generated_documents(
                         vec![document.as_ref().clone()],
@@ -4341,6 +4460,7 @@ impl PopGene {
             Modal::FigureTools(e)=>div().child(e.clone()).into_any_element(),
             Modal::DuplexView(e)=>div().size_full().child(e.clone()).into_any_element(),
             Modal::CloningTools(e)=>div().child(e.clone()).into_any_element(),
+            Modal::GelTools(e)=>div().size_full().child(e.clone()).into_any_element(),
             Modal::EnzymeSelection(e)=>div().child(e.clone()).into_any_element(),
             Modal::Export(e)=>div().child(e.clone()).into_any_element(),
             Modal::UpdateInfo(message)=>div().v_flex().gap_4().w(px(460.)).p_6()
@@ -4379,6 +4499,7 @@ impl PopGene {
                                 self.modal,
                                 Some(
                                     Modal::AlignmentTools(_)
+                                        | Modal::GelTools(_)
                                         | Modal::TraceTools(_)
                                         | Modal::DuplexView(_)
                                 )
@@ -4393,6 +4514,7 @@ impl PopGene {
                                 self.modal,
                                 Some(
                                     Modal::AlignmentTools(_)
+                                        | Modal::GelTools(_)
                                         | Modal::TraceTools(_)
                                         | Modal::DuplexView(_)
                                 )

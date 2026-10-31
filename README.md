@@ -26,6 +26,7 @@ Keep the archive's licence and notice files with the app if you share it. PopGen
 
 - **Maps and sequences.** Create or open DNA, RNA and protein documents. Linked circular and linear maps sit beside a wrapped sequence view, with features, primers and restriction sites on both, and a full-duplex inspector shows both strands and their overhangs. Search, select and edit bases, reverse-complement and change topology, with undo and redo for each document.
 - **Restriction analysis.** 1,089 enzymes, custom enzyme lists, site-count filters, digests and fragment ends. Unknown cut positions are flagged rather than guessed.
+- **Agarose gels.** Simulate gels with up to 12 lanes of open sequences, digests and ladders, in TAE or TBE, then save, export, copy or print them. See [gel simulation](docs/gel-simulation.md).
 - **Primers.** Primer3 design with explicit reaction settings, plus manually added primers and unbound oligos.
 - **Cloning.** PCR, ligation, overlap assembly and Golden Gate, with annotations carried into the products.
 - **Translation.** CDS and six-frame translation, ORF finding and all 27 current NCBI genetic codes.

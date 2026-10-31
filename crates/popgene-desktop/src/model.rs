@@ -1462,6 +1462,45 @@ impl Model {
         });
         true
     }
+    /// Writes already-encoded bytes, such as a saved gel, in the tab's background job.
+    pub fn export_bytes_to(
+        &mut self,
+        index: usize,
+        path: PathBuf,
+        bytes: Vec<u8>,
+        extension: &'static str,
+    ) -> bool {
+        if self
+            .tabs
+            .get(index)
+            .is_none_or(|tab| tab.draft || tab.busy())
+        {
+            return false;
+        }
+        if path
+            .extension()
+            .and_then(|s| s.to_str())
+            .is_none_or(|s| !s.eq_ignore_ascii_case(extension))
+        {
+            self.tabs[index].message(format!("Use the .{extension} extension."), true);
+            return false;
+        }
+        let path = resolved(&path);
+        if self.collision(index, &path, true) {
+            self.tabs[index].message(
+                "Export to a destination that is not open or being written.",
+                true,
+            );
+            return false;
+        }
+        let tab = &mut self.tabs[index];
+        tab.message("Saving…", false);
+        tab.start_job(path.clone(), move || {
+            formats::atomic_export(&path, &bytes).map_err(|e| e.to_string())?;
+            Ok(Completed::Exported(path))
+        });
+        true
+    }
     /// Renders print pages without a destination file; the UI takes `printable`.
     pub fn print_figure(&mut self, index: usize, svg: String, page_height: Option<u32>) -> bool {
         let Some(tab) = self.tabs.get_mut(index).filter(|tab| !tab.draft) else {

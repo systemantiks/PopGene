@@ -152,6 +152,7 @@ fn menus(state: MenuState) -> Vec<Menu> {
             MenuItem::separator(),
             MenuItem::action("PCR & Cloning…", CloningTools),
             MenuItem::action("Restriction Digestion…", DigestTools),
+            MenuItem::action("Simulate Agarose Gel…", SimulateGel),
             MenuItem::action("Align Open Sequences…", AlignmentTools),
             MenuItem::separator(),
             MenuItem::action("Full Duplex Strands & Annotations…", DuplexView),
