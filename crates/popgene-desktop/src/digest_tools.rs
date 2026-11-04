@@ -1,18 +1,20 @@
-//! Restriction digestion setup, scientific assumptions and product selection.
+//! Restriction digestion setup, scientific assumptions, product selection and gel.
+use crate::gel_view::{self, GelClick, GelControls, GelControlsEvent, GelDefaults};
 use gpui_kit::component::{
     Disableable, Selectable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState},
 };
-use gpui_kit::*;
+use gpui_kit::{prelude::*, *};
 use popgene_core::{
     Document, Molecule,
+    gel::{self, Gel, LADDERS, Lane, MAX_LANES},
     restriction::{
         self, CleavageAssessment, DigestConditions, DigestFragment, DigestResult, ENZYMES, EndKind,
         FragmentEnd, Methylation,
     },
 };
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, rc::Rc, sync::Arc};
 
 pub enum DigestEvent {
     Create {
@@ -34,8 +36,17 @@ pub struct DigestTools {
     selected: BTreeSet<usize>,
     busy: bool,
     error: String,
+    controls: Entity<GelControls>,
+    custom_ladder: Entity<InputState>,
+    /// Index into `gel::LADDERS`; `None` uses the custom sizes.
+    ladder: Option<usize>,
+    /// Earlier digests kept for comparison; they survive parameter changes.
+    lanes: Vec<Lane>,
+    result_kept: bool,
     _subscriptions: Vec<Subscription>,
 }
+/// The ladder and the current, not yet kept, digest occupy the other lanes.
+const MAX_KEPT_LANES: usize = MAX_LANES - 2;
 impl EventEmitter<DigestEvent> for DigestTools {}
 impl DigestTools {
     pub fn new(
@@ -74,7 +85,15 @@ impl DigestTools {
                 }
             }));
         }
-        subscriptions.push(cx.subscribe(&search, |_, _, _: &InputEvent, cx| cx.notify()));
+        let defaults = GelDefaults::load();
+        let controls = cx.new(|cx| GelControls::new(defaults.settings, window, cx));
+        subscriptions.push(cx.subscribe(&controls, |_, _, _: &GelControlsEvent, cx| cx.notify()));
+        let custom_ladder = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Ladder sizes in bp, e.g. 10000 5000 1000 500")
+        });
+        for input in [&search, &custom_ladder] {
+            subscriptions.push(cx.subscribe(input, |_, _, _: &InputEvent, cx| cx.notify()));
+        }
         let methylation = initial_methylation(&document);
         Self {
             document,
@@ -88,6 +107,16 @@ impl DigestTools {
             selected: BTreeSet::new(),
             busy: false,
             error: String::new(),
+            controls,
+            custom_ladder,
+            ladder: Some(
+                LADDERS
+                    .iter()
+                    .position(|l| l.name == defaults.ladder)
+                    .unwrap_or(0),
+            ),
+            lanes: vec![],
+            result_kept: false,
             _subscriptions: subscriptions,
         }
     }
@@ -97,6 +126,7 @@ impl DigestTools {
     }
     fn invalidate(&mut self, cx: &mut Context<Self>) {
         self.result = None;
+        self.result_kept = false;
         self.selected.clear();
         self.error.clear();
         cx.notify();
@@ -190,6 +220,195 @@ impl DigestTools {
         });
     }
 }
+impl DigestTools {
+    fn current_lane(&self) -> Option<Lane> {
+        let result = self.result.as_ref()?;
+        let mut lane = Lane::digest(self.result_enzymes.join(" + "), &result.fragments);
+        lane.provisional = !result.all_sites_resolved;
+        lane.noncutters = self
+            .result_enzymes
+            .iter()
+            .filter(|name| {
+                !result
+                    .sites
+                    .iter()
+                    .any(|s| ENZYMES[s.site.enzyme_index].name == name.as_str())
+            })
+            .cloned()
+            .collect();
+        Some(lane)
+    }
+    /// Gel lane holding the current digest, while it is not a kept lane.
+    fn current_index(&self) -> Option<usize> {
+        (self.result.is_some() && !self.result_kept).then_some(1 + self.lanes.len())
+    }
+    fn gel(&self, cx: &App) -> Result<Gel, String> {
+        let ladder = match self.ladder {
+            Some(i) => Lane::ladder(&LADDERS[i]),
+            None => Lane::custom_ladder(
+                "Custom ladder",
+                &gel_view::parse_ladder(&self.custom_ladder.read(cx).value())?,
+            ),
+        };
+        let settings = self.controls.read(cx).settings(cx)?;
+        let mut lanes = vec![ladder];
+        lanes.extend(self.lanes.iter().cloned());
+        if !self.result_kept {
+            lanes.extend(self.current_lane());
+        }
+        gel::simulate(&lanes, &settings)
+    }
+    /// Selects, or clears, every product drawn in one band of the current digest.
+    fn toggle_band(&mut self, band: usize, cx: &mut Context<Self>) {
+        let (Some(lane), Ok(gel)) = (self.current_index(), self.gel(cx)) else {
+            return;
+        };
+        if !self.result.as_ref().is_some_and(|r| r.all_sites_resolved) {
+            return;
+        }
+        let Some(members) = gel.lanes.get(lane).and_then(|l| l.bands.get(band)) else {
+            return;
+        };
+        let members = &members.members;
+        if members.iter().all(|m| self.selected.contains(m)) {
+            for m in members {
+                self.selected.remove(m);
+            }
+        } else if self.selected.len() + members.len() > 64 {
+            self.error("Select at most 64 products", cx);
+            return;
+        } else {
+            self.selected.extend(members.iter().copied());
+        }
+        cx.notify();
+    }
+    fn keep_lane(&mut self, cx: &mut Context<Self>) {
+        if self.result_kept {
+            return;
+        }
+        if self.lanes.len() >= MAX_KEPT_LANES {
+            self.error(format!("Keep at most {MAX_KEPT_LANES} lanes"), cx);
+            return;
+        }
+        if let Some(lane) = self.current_lane() {
+            self.lanes.push(lane);
+            self.result_kept = true;
+            cx.notify();
+        }
+    }
+    fn gel_section(&self, cx: &mut Context<Self>) -> Div {
+        let note = match self.ladder {
+            Some(i) => format!("{} Source: {}", LADDERS[i].note, LADDERS[i].source),
+            None => "Custom ladder bands are drawn with uniform intensity.".into(),
+        };
+        let owner = cx.entity().downgrade();
+        let mut section = div()
+            .v_flex()
+            .gap_2()
+            .pt_3()
+            .border_t_1()
+            .border_color(rgb(0x2a3646))
+            .child(div().text_lg().child("Simulated agarose gel"))
+            .child(self.controls.clone())
+            .child(div().text_xs().child("Ladder"))
+            .child(gel_view::ladder_buttons(
+                self.ladder,
+                true,
+                move |ladder, _, cx| {
+                    let _ = owner.update(cx, |this, cx| {
+                        this.ladder = ladder;
+                        cx.notify();
+                    });
+                },
+            ))
+            .when(self.ladder.is_none(), |d| {
+                d.child(Input::new(&self.custom_ladder))
+            })
+            .child(div().text_xs().text_color(rgb(0x96a6bc)).child(note));
+        match self.gel(cx) {
+            Ok(gel) => {
+                let current = self.current_index();
+                let selected = &self.selected;
+                let highlighted = |lane: usize, band: usize| {
+                    Some(lane) == current
+                        && gel.lanes[lane].bands[band]
+                            .members
+                            .iter()
+                            .all(|m| selected.contains(m))
+                };
+                let owner = cx.entity().downgrade();
+                let click: GelClick = Rc::new(move |lane, band, _, cx| {
+                    if let Some(band) = band
+                        && Some(lane) == current
+                    {
+                        let _ = owner.update(cx, |this, cx| this.toggle_band(band, cx));
+                    }
+                });
+                section = section
+                    .child(gel_view::gel_figure(
+                        &gel,
+                        current,
+                        &highlighted,
+                        Some(click),
+                    ))
+                    .when(current.is_some(), |d| {
+                        d.child(div().text_xs().text_color(rgb(0x96a6bc)).child(
+                            "Click a band in the current digest lane to select or clear its products.",
+                        ))
+                    })
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(0x96a6bc))
+                            .child(gel::MODEL_NOTE),
+                    )
+                    .children(
+                        gel.warnings
+                            .iter()
+                            .map(|w| div().text_xs().text_color(rgb(0xe5b879)).child(w.clone())),
+                    );
+            }
+            Err(e) => {
+                section = section.child(div().text_sm().text_color(rgb(0xef938a)).child(e));
+            }
+        }
+        section.child(
+            div()
+                .h_flex()
+                .gap_2()
+                .child(
+                    Button::new("keep-gel-lane")
+                        .label("Keep lane for comparison")
+                        .disabled(
+                            self.result.is_none()
+                                || self.result_kept
+                                || self.lanes.len() >= MAX_KEPT_LANES,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.keep_lane(cx))),
+                )
+                .child(
+                    Button::new("clear-gel-lanes")
+                        .label("Clear kept lanes")
+                        .disabled(self.lanes.is_empty())
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.lanes.clear();
+                            this.result_kept = false;
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    Button::new("copy-gel-report")
+                        .label("Copy gel report")
+                        .on_click(cx.listener(|this, _, _, cx| match this.gel(cx) {
+                            Ok(gel) => cx.write_to_clipboard(ClipboardItem::new_string(
+                                gel_view::report(&gel),
+                            )),
+                            Err(e) => this.error(e, cx),
+                        })),
+                ),
+        )
+    }
+}
 fn parse_enzymes(text: &str) -> Result<Vec<usize>, String> {
     let mut indices = vec![];
     for name in text
@@ -209,7 +428,7 @@ fn parse_enzymes(text: &str) -> Result<Vec<usize>, String> {
     }
     Ok(indices)
 }
-fn initial_methylation(document: &Document) -> Methylation {
+pub(crate) fn initial_methylation(document: &Document) -> Methylation {
     let recorded = document.methylation.unwrap_or_default();
     Methylation {
         dam: recorded.dam,
@@ -521,6 +740,9 @@ impl Render for DigestTools {
                     })
                     .take(100),
             );
+        }
+        if self.result.is_some() || !self.lanes.is_empty() {
+            body = body.child(self.gel_section(cx));
         }
         if !self.error.is_empty() {
             body = body.child(

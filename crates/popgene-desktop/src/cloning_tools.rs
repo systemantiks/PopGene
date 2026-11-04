@@ -14,6 +14,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub enum CloningEvent {
     Create(Box<Document>),
+    /// Load the calculated product, uncut, beside a ladder.
+    ShowGel(Box<Document>),
     Cancel,
 }
 #[derive(Clone, Copy, PartialEq)]
@@ -769,6 +771,16 @@ impl Render for CloningTools {
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     if let Some(fasta) = this.calculation.fasta() {
                                         cx.write_to_clipboard(ClipboardItem::new_string(fasta));
+                                    }
+                                })),
+                        )
+                        .child(
+                            Button::new("show-cloning-gel")
+                                .small()
+                                .label("Show on gel")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(product) = this.calculation.current() {
+                                        cx.emit(CloningEvent::ShowGel(Box::new(product.clone())));
                                     }
                                 })),
                         )

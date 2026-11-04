@@ -29,6 +29,11 @@ pub enum FigureEvent {
         kind: &'static str,
         page_height: Option<u32>,
     },
+    /// Print uses the PDF pipeline with a white background.
+    Print {
+        svg: String,
+        page_height: Option<u32>,
+    },
     Cancel,
 }
 pub struct FigureTools {
@@ -41,21 +46,35 @@ pub struct FigureTools {
     sequence: bool,
     selection: bool,
     light: bool,
+    print: bool,
     error: String,
 }
 impl EventEmitter<FigureEvent> for FigureTools {}
 impl FigureTools {
-    pub fn new(context: FigureContext, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    /// `print` is None for export, or whether printing starts from the sequence.
+    /// Print pages are portrait-proportioned; the print dialog scales them to the paper.
+    pub fn new(
+        context: FigureContext,
+        print: Option<bool>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let (width, height) = if print.is_some() {
+            ("1000", "1300")
+        } else {
+            ("1200", "900")
+        };
         Self {
             context,
-            width: cx.new(|cx| InputState::new(window, cx).default_value("1200")),
-            height: cx.new(|cx| InputState::new(window, cx).default_value("900")),
+            width: cx.new(|cx| InputState::new(window, cx).default_value(width)),
+            height: cx.new(|cx| InputState::new(window, cx).default_value(height)),
             rows: cx.new(|cx| InputState::new(window, cx).default_value("100")),
             scale: cx.new(|cx| InputState::new(window, cx).default_value("3.125")),
             format: FigureFormat::Pdf,
-            sequence: false,
+            sequence: print.unwrap_or(false),
             selection: false,
             light: true,
+            print: print.is_some(),
             error: String::new(),
         }
     }
@@ -156,6 +175,9 @@ impl FigureTools {
             Ok((svg, scale, page_height))
         })();
         match result {
+            Ok((svg, _, page_height)) if self.print => {
+                cx.emit(FigureEvent::Print { svg, page_height })
+            }
             Ok((svg, scale, page_height)) => cx.emit(FigureEvent::Export {
                 svg,
                 format: self.format,
@@ -172,15 +194,62 @@ impl FigureTools {
 }
 impl Render for FigureTools {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut body=div().v_flex().gap_3().p_3().child(div().text_xl().child("Export figure"))
+        let mut body=div().v_flex().gap_3().p_3().child(div().text_xl().child(if self.print {"Print"} else {"Export figure"}))
             .child(div().text_sm().child(self.context.document.name.clone()))
             .child(div().h_flex().gap_2().children([(false,"Map"),(true,"Sequence")].into_iter().enumerate().map(|(i,(sequence,label))|Button::new(("figure-content",i)).small().selected(self.sequence==sequence).label(label).on_click(cx.listener(move |this,_,_,cx|{this.sequence=sequence;this.error.clear();cx.notify();})))))
-            .child(div().text_xs().child(if self.sequence {"Uses current sequence layers, genetic code and selected-CDS flank settings. Original coordinates are retained. Any omitted rows or crowded labels are explicitly marked."} else {"Uses current map layers and enzyme filter, fitted to figure dimensions. Dense-label omissions remain labelled."}))
-            .child(div().h_flex().gap_2().children([FigureFormat::Svg,FigureFormat::Pdf,FigureFormat::Png].into_iter().enumerate().map(|(i,format)|Button::new(("figure-format",i)).small().selected(self.format==format).label(format.label()).on_click(cx.listener(move |this,_,_,cx|{this.format=format;cx.notify();})))))
-            .child(div().h_flex().gap_3().child(div().v_flex().gap_1().child("Width (px)").child(Input::new(&self.width).w(px(160.)))).child(div().v_flex().gap_1().child(if self.sequence {"Maximum rows"} else {"Height (px)"}).child(Input::new(if self.sequence {&self.rows} else {&self.height}).w(px(160.)))));
+            .child(div().text_xs().child(if self.sequence {"Uses current sequence layers, genetic code and selected-CDS flank settings. Original coordinates are retained. Any omitted rows or crowded labels are explicitly marked."} else {"Uses current map layers and enzyme filter, fitted to figure dimensions. Dense-label omissions remain labelled."}));
+        if !self.print {
+            body = body.child(
+                div().h_flex().gap_2().children(
+                    [FigureFormat::Svg, FigureFormat::Pdf, FigureFormat::Png]
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, format)| {
+                            Button::new(("figure-format", i))
+                                .small()
+                                .selected(self.format == format)
+                                .label(format.label())
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.format = format;
+                                    cx.notify();
+                                }))
+                        }),
+                ),
+            );
+        }
+        body = body.child(
+            div()
+                .h_flex()
+                .gap_3()
+                .child(
+                    div()
+                        .v_flex()
+                        .gap_1()
+                        .child("Width (px)")
+                        .child(Input::new(&self.width).w(px(160.))),
+                )
+                .child(
+                    div()
+                        .v_flex()
+                        .gap_1()
+                        .child(if self.sequence {
+                            "Maximum rows"
+                        } else {
+                            "Height (px)"
+                        })
+                        .child(
+                            Input::new(if self.sequence {
+                                &self.rows
+                            } else {
+                                &self.height
+                            })
+                            .w(px(160.)),
+                        ),
+                ),
+        );
         if self.sequence {
             if self.format == FigureFormat::Pdf {
-                body=body.child(div().h_flex().gap_3().child("PDF page height (px)").child(Input::new(&self.height).w(px(160.))))
+                body=body.child(div().h_flex().gap_3().child(if self.print {"Page height (px)"} else {"PDF page height (px)"}).child(Input::new(&self.height).w(px(160.))))
                     .child(div().text_xs().child("PDF pages break between complete sequence rows and retain all exported rows."));
             }
             body = body.child(
@@ -202,9 +271,13 @@ impl Render for FigureTools {
                 ),
             );
         }
-        body=body.child(div().h_flex().gap_2().children([(true,"White background"),(false,"Dark background")].into_iter().enumerate().map(|(i,(light,label))|Button::new(("figure-background",i)).small().selected(self.light==light).label(label).on_click(cx.listener(move |this,_,_,cx|{this.light=light;cx.notify();})))))
-            .child(div().h_flex().gap_3().child("PNG raster scale").child(Input::new(&self.scale).w(px(160.)).disabled(self.format!=FigureFormat::Png)))
-            .child(div().text_xs().child("Scale 3.125 produces 300 pixels per nominal inch. SVG and PDF use 96 layout pixels per inch. SVG text is outlined; PDF remains vector."));
+        if self.print {
+            body=body.child(div().text_xs().child("Pages print on a white background, scaled to fit the paper chosen in the print dialog."));
+        } else {
+            body=body.child(div().h_flex().gap_2().children([(true,"White background"),(false,"Dark background")].into_iter().enumerate().map(|(i,(light,label))|Button::new(("figure-background",i)).small().selected(self.light==light).label(label).on_click(cx.listener(move |this,_,_,cx|{this.light=light;cx.notify();})))))
+                .child(div().h_flex().gap_3().child("PNG raster scale").child(Input::new(&self.scale).w(px(160.)).disabled(self.format!=FigureFormat::Png)))
+                .child(div().text_xs().child("Scale 3.125 produces 300 pixels per nominal inch. SVG and PDF use 96 layout pixels per inch. SVG text is outlined; PDF remains vector."));
+        }
         if !self.error.is_empty() {
             body = body.child(div().text_color(rgb(0xef938a)).child(self.error.clone()));
         }
@@ -221,7 +294,11 @@ impl Render for FigureTools {
                 .child(
                     Button::new("export-figure")
                         .primary()
-                        .label("Choose destination…")
+                        .label(if self.print {
+                            "Print…"
+                        } else {
+                            "Choose destination…"
+                        })
                         .on_click(cx.listener(|this, _, window, cx| this.export(window, cx))),
                 ),
         )

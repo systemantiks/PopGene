@@ -68,7 +68,8 @@ private key and the already-shipped app. Leave it unset for the default key.
 ## Build a release locally
 
 Update the workspace version, run Cargo once to update `Cargo.lock`, increment
-`release/macos.json`'s build and write `release/notes/<version>.md`. Then run:
+`release/macos.json`'s build, write `release/notes/<version>.md` and update the
+versioned download links in `README.md`. Then run:
 
 ```sh
 export APPLE_SIGNING_IDENTITY='Developer ID Application: Your Name (TEAMID)'

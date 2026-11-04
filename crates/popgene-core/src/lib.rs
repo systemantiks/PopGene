@@ -7,6 +7,7 @@ pub const MAX_BASES: usize = 10_000_000;
 pub mod alignment;
 pub mod cloning;
 pub mod creation;
+pub mod gel;
 pub mod lineage;
 pub mod location;
 pub mod metadata;
